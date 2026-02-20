@@ -11,8 +11,11 @@
 //! 
 //! ## Modules
 //! - `group`: Core Group data structure and state management
+//! - `contribution`: Contribution record tracking for member payments
 
+pub mod contribution;
 pub mod group;
 
 // Re-export for convenience
+pub use contribution::ContributionRecord;
 pub use group::Group;
