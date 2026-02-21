@@ -4,4 +4,4 @@ I worked on the interactive currency input field in Figma, carefully balancing t
 
 I worked on the Maximum Members input field, integrating helpful subtext to guide users toward an optimal group size. I also worked on the Start Date picker UX to ensure the first collection date was prominently displayed, effectively preventing any potential scheduling confusion. Finally, I worked on the comprehensive summary screen in Figma to aggregate General Information, Financial Details, and Membership data into scannable, high-fidelity cards.
 
-figma link https://www.figma.com/design/fEqfuBtMgHZWDXHq9wqdHY/Stella-Save-UI?node-id=8-664&t=cD4A5k93cUikEqT7-0
+this is the figma link https://www.figma.com/design/fEqfuBtMgHZWDXHq9wqdHY/Stella-Save-UI?node-id=8-664&t=cD4A5k93cUikEqT7-0
