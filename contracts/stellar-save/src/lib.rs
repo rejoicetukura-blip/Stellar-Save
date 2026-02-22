@@ -123,6 +123,60 @@ impl StellarSaveContract {
         env.storage().persistent().set(&key, &new_config);
         Ok(())
     }
+
+    /// Creates a new savings group (ROSCA).
+    /// Tasks: Validate parameters, Generate ID, Initialize Struct, Store Data, Emit Event.
+    pub fn create_group(
+        env: Env,
+        creator: Address,
+        contribution_amount: i128,
+        cycle_duration: u64,
+        max_members: u32,
+    ) -> Result<u64, StellarSaveError> {
+        // 1. Authorization: Only the creator can initiate this transaction
+        creator.require_auth();
+
+        // 2. Global Validation: Check against ContractConfig
+        let config_key = StorageKeyBuilder::contract_config();
+        if let Some(config) = env.storage().persistent().get::<_, ContractConfig>(&config_key) {
+            if contribution_amount < config.min_contribution || contribution_amount > config.max_contribution ||
+               max_members < config.min_members || max_members > config.max_members ||
+               cycle_duration < config.min_cycle_duration || cycle_duration > config.max_cycle_duration {
+                return Err(StellarSaveError::InvalidState);
+            }
+        }
+
+        // 3. Generate unique group ID
+        let group_id = Self::generate_next_group_id(&env)?;
+
+        // 4. Initialize Group Struct
+        let current_time = env.ledger().timestamp();
+        let new_group = Group::new(
+            group_id,
+            creator.clone(),
+            contribution_amount,
+            cycle_duration,
+            max_members,
+            current_time,
+        );
+
+        // 5. Store Group Data
+        let group_key = StorageKeyBuilder::group_data(group_id);
+        env.storage().persistent().set(&group_key, &new_group);
+        
+        // Initialize Group Status as Pending
+        let status_key = StorageKeyBuilder::group_status(group_id);
+        env.storage().persistent().set(&status_key, &GroupStatus::Pending);
+
+        // 6. Emit GroupCreated Event
+        env.events().publish(
+            (Symbol::new(&env, "GroupCreated"), creator),
+            group_id
+        );
+
+        // 7. Return Group ID
+        Ok(group_id)
+    }
 }
 
 
