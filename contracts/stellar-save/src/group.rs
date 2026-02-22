@@ -297,6 +297,35 @@ impl Group {
             && self.max_members >= 2
             && self.current_cycle <= self.max_members
     }
+
+    /// Calculates aggregated statistics for this group.
+    /// 
+    /// # Arguments
+    /// * `total_contributed` - Total amount contributed by all members
+    /// * `total_paid_out` - Total amount paid out to members
+    /// * `active_members` - Number of currently active members
+    /// 
+    /// Returns a GroupStats struct with the calculated values.
+    pub fn calculate_stats(
+        &self,
+        total_contributed: i128,
+        total_paid_out: i128,
+        active_members: u32,
+    ) -> GroupStats {
+        // Calculate completion percentage based on cycles completed
+        let completion_percentage = if self.max_members > 0 {
+            ((self.current_cycle as u64 * 100) / self.max_members as u64) as u32
+        } else {
+            0
+        };
+
+        GroupStats {
+            total_contributed,
+            total_paid_out,
+            active_members,
+            completion_percentage,
+        }
+    }
 }
 
 #[cfg(test)]
