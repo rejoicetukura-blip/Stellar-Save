@@ -147,6 +147,102 @@ impl StellarSaveContract {
         Ok(())
     }
 
+    /// Records a contribution in storage and updates member statistics.
+    /// 
+    /// This is an internal helper function that handles all the storage operations
+    /// required when a member makes a contribution. It ensures data consistency by:
+    /// - Creating and storing the contribution record
+    /// - Updating the cycle's total contribution amount
+    /// - Incrementing the cycle's contributor count
+    /// 
+    /// # Arguments
+    /// * `env` - Soroban environment for storage access
+    /// * `group_id` - ID of the group receiving the contribution
+    /// * `cycle_number` - The cycle number for this contribution
+    /// * `member_address` - Address of the member making the contribution
+    /// * `amount` - Contribution amount in stroops
+    /// * `timestamp` - Timestamp when the contribution was made
+    /// 
+    /// # Returns
+    /// * `Ok(())` - Contribution successfully recorded
+    /// * `Err(StellarSaveError::AlreadyContributed)` - Member already contributed this cycle
+    /// * `Err(StellarSaveError::Overflow)` - Arithmetic overflow in totals
+    /// 
+    /// # Storage Updates
+    /// 1. Individual contribution record at `contribution_individual(group_id, cycle, address)`
+    /// 2. Cycle total amount at `contribution_cycle_total(group_id, cycle)`
+    /// 3. Cycle contributor count at `contribution_cycle_count(group_id, cycle)`
+    /// 
+    /// # Example
+    /// ```ignore
+    /// // Record a 10 XLM contribution
+    /// StellarSaveContract::record_contribution(
+    ///     &env,
+    ///     group_id,
+    ///     0,  // cycle 0
+    ///     member_address,
+    ///     100_000_000,  // 10 XLM
+    ///     env.ledger().timestamp()
+    /// )?;
+    /// ```
+    fn record_contribution(
+        env: &Env,
+        group_id: u64,
+        cycle_number: u32,
+        member_address: Address,
+        amount: i128,
+        timestamp: u64,
+    ) -> Result<(), StellarSaveError> {
+        // 1. Check if member has already contributed in this cycle
+        let contrib_key = StorageKeyBuilder::contribution_individual(
+            group_id,
+            cycle_number,
+            member_address.clone()
+        );
+        
+        if env.storage().persistent().has(&contrib_key) {
+            return Err(StellarSaveError::AlreadyContributed);
+        }
+        
+        // 2. Create contribution record
+        let contribution = ContributionRecord::new(
+            member_address.clone(),
+            group_id,
+            cycle_number,
+            amount,
+            timestamp,
+        );
+        
+        // 3. Store contribution record with proper key
+        env.storage().persistent().set(&contrib_key, &contribution);
+        
+        // 4. Update cycle total amount
+        let total_key = StorageKeyBuilder::contribution_cycle_total(group_id, cycle_number);
+        let current_total: i128 = env.storage()
+            .persistent()
+            .get(&total_key)
+            .unwrap_or(0);
+        
+        let new_total = current_total.checked_add(amount)
+            .ok_or(StellarSaveError::Overflow)?;
+        
+        env.storage().persistent().set(&total_key, &new_total);
+        
+        // 5. Update cycle contributor count
+        let count_key = StorageKeyBuilder::contribution_cycle_count(group_id, cycle_number);
+        let current_count: u32 = env.storage()
+            .persistent()
+            .get(&count_key)
+            .unwrap_or(0);
+        
+        let new_count = current_count.checked_add(1)
+            .ok_or(StellarSaveError::Overflow)?;
+        
+        env.storage().persistent().set(&count_key, &new_count);
+        
+        Ok(())
+    }
+
     fn generate_next_group_id(env: &Env) -> Result<u64, StellarSaveError> {
         let key = StorageKeyBuilder::next_group_id();
         
@@ -3144,6 +3240,349 @@ mod tests {
             let missed_member = missed.get(i).unwrap();
             assert_eq!(missed_member, expected_member);
         }
+    }
+
+    // Tests for record_contribution helper function
+    
+    #[test]
+    fn test_record_contribution_success() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarSaveContract);
+        
+        let member = Address::generate(&env);
+        let group_id = 1;
+        let cycle = 0;
+        let amount = 10_000_000; // 1 XLM
+        let timestamp = 12345u64;
+        
+        // Action: Record contribution using as_contract
+        let result = env.as_contract(&contract_id, || {
+            StellarSaveContract::record_contribution(
+                &env,
+                group_id,
+                cycle,
+                member.clone(),
+                amount,
+                timestamp
+            )
+        });
+        
+        // Verify: Success
+        assert!(result.is_ok());
+        
+        // Verify: Contribution record was stored
+        let contrib_key = StorageKeyBuilder::contribution_individual(group_id, cycle, member.clone());
+        let stored_contrib: ContributionRecord = env.storage().persistent().get(&contrib_key).unwrap();
+        assert_eq!(stored_contrib.member_address, member);
+        assert_eq!(stored_contrib.group_id, group_id);
+        assert_eq!(stored_contrib.cycle_number, cycle);
+        assert_eq!(stored_contrib.amount, amount);
+        assert_eq!(stored_contrib.timestamp, timestamp);
+        
+        // Verify: Cycle total was updated
+        let total_key = StorageKeyBuilder::contribution_cycle_total(group_id, cycle);
+        let total: i128 = env.storage().persistent().get(&total_key).unwrap();
+        assert_eq!(total, amount);
+        
+        // Verify: Cycle count was updated
+        let count_key = StorageKeyBuilder::contribution_cycle_count(group_id, cycle);
+        let count: u32 = env.storage().persistent().get(&count_key).unwrap();
+        assert_eq!(count, 1);
+    }
+    
+    #[test]
+    fn test_record_contribution_already_contributed() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarSaveContract);
+        
+        let member = Address::generate(&env);
+        let group_id = 1;
+        let cycle = 0;
+        let amount = 10_000_000;
+        let timestamp = 12345u64;
+        
+        // Setup: Record first contribution
+        env.as_contract(&contract_id, || {
+            StellarSaveContract::record_contribution(
+                &env,
+                group_id,
+                cycle,
+                member.clone(),
+                amount,
+                timestamp
+            )
+        }).unwrap();
+        
+        // Action: Try to record second contribution for same member/cycle
+        let result = env.as_contract(&contract_id, || {
+            StellarSaveContract::record_contribution(
+                &env,
+                group_id,
+                cycle,
+                member.clone(),
+                amount,
+                timestamp + 100
+            )
+        });
+        
+        // Verify: Error returned
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), StellarSaveError::AlreadyContributed);
+        
+        // Verify: Totals weren't double-counted
+        let total_key = StorageKeyBuilder::contribution_cycle_total(group_id, cycle);
+        let total: i128 = env.storage().persistent().get(&total_key).unwrap();
+        assert_eq!(total, amount); // Still just the first contribution
+        
+        let count_key = StorageKeyBuilder::contribution_cycle_count(group_id, cycle);
+        let count: u32 = env.storage().persistent().get(&count_key).unwrap();
+        assert_eq!(count, 1); // Still just 1 contributor
+    }
+    
+    #[test]
+    fn test_record_contribution_multiple_members() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarSaveContract);
+        
+        let member1 = Address::generate(&env);
+        let member2 = Address::generate(&env);
+        let member3 = Address::generate(&env);
+        let group_id = 1;
+        let cycle = 0;
+        let amount = 10_000_000;
+        let timestamp = 12345u64;
+        
+        // Action: Record contributions from 3 members
+        for (i, member) in [&member1, &member2, &member3].iter().enumerate() {
+            let result = env.as_contract(&contract_id, || {
+                StellarSaveContract::record_contribution(
+                    &env,
+                    group_id,
+                    cycle,
+                    (*member).clone(),
+                    amount,
+                    timestamp + (i as u64 * 100)
+                )
+            });
+            assert!(result.is_ok());
+        }
+        
+        // Verify: All contributions were stored
+        for member in [&member1, &member2, &member3].iter() {
+            let contrib_key = StorageKeyBuilder::contribution_individual(group_id, cycle, (*member).clone());
+            assert!(env.storage().persistent().has(&contrib_key));
+        }
+        
+        // Verify: Cycle total is sum of all contributions
+        let total_key = StorageKeyBuilder::contribution_cycle_total(group_id, cycle);
+        let total: i128 = env.storage().persistent().get(&total_key).unwrap();
+        assert_eq!(total, amount * 3);
+        
+        // Verify: Cycle count is 3
+        let count_key = StorageKeyBuilder::contribution_cycle_count(group_id, cycle);
+        let count: u32 = env.storage().persistent().get(&count_key).unwrap();
+        assert_eq!(count, 3);
+    }
+    
+    #[test]
+    fn test_record_contribution_different_cycles() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarSaveContract);
+        
+        let member = Address::generate(&env);
+        let group_id = 1;
+        let amount = 10_000_000;
+        let timestamp = 12345u64;
+        
+        // Action: Record contributions in different cycles
+        for cycle in 0..3 {
+            let result = env.as_contract(&contract_id, || {
+                StellarSaveContract::record_contribution(
+                    &env,
+                    group_id,
+                    cycle,
+                    member.clone(),
+                    amount,
+                    timestamp + (cycle as u64 * 3600)
+                )
+            });
+            assert!(result.is_ok());
+        }
+        
+        // Verify: Each cycle has its own contribution record
+        for cycle in 0..3 {
+            let contrib_key = StorageKeyBuilder::contribution_individual(group_id, cycle, member.clone());
+            let contrib: ContributionRecord = env.storage().persistent().get(&contrib_key).unwrap();
+            assert_eq!(contrib.cycle_number, cycle);
+        }
+        
+        // Verify: Each cycle has its own totals
+        for cycle in 0..3 {
+            let total_key = StorageKeyBuilder::contribution_cycle_total(group_id, cycle);
+            let total: i128 = env.storage().persistent().get(&total_key).unwrap();
+            assert_eq!(total, amount);
+            
+            let count_key = StorageKeyBuilder::contribution_cycle_count(group_id, cycle);
+            let count: u32 = env.storage().persistent().get(&count_key).unwrap();
+            assert_eq!(count, 1);
+        }
+    }
+    
+    #[test]
+    fn test_record_contribution_different_amounts() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarSaveContract);
+        
+        let member1 = Address::generate(&env);
+        let member2 = Address::generate(&env);
+        let group_id = 1;
+        let cycle = 0;
+        let amount1 = 10_000_000; // 1 XLM
+        let amount2 = 20_000_000; // 2 XLM
+        let timestamp = 12345u64;
+        
+        // Action: Record contributions with different amounts
+        env.as_contract(&contract_id, || {
+            StellarSaveContract::record_contribution(
+                &env,
+                group_id,
+                cycle,
+                member1.clone(),
+                amount1,
+                timestamp
+            )
+        }).unwrap();
+        
+        env.as_contract(&contract_id, || {
+            StellarSaveContract::record_contribution(
+                &env,
+                group_id,
+                cycle,
+                member2.clone(),
+                amount2,
+                timestamp + 100
+            )
+        }).unwrap();
+        
+        // Verify: Total is sum of different amounts
+        let total_key = StorageKeyBuilder::contribution_cycle_total(group_id, cycle);
+        let total: i128 = env.storage().persistent().get(&total_key).unwrap();
+        assert_eq!(total, amount1 + amount2);
+        
+        // Verify: Count is 2
+        let count_key = StorageKeyBuilder::contribution_cycle_count(group_id, cycle);
+        let count: u32 = env.storage().persistent().get(&count_key).unwrap();
+        assert_eq!(count, 2);
+    }
+    
+    #[test]
+    fn test_record_contribution_updates_existing_totals() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarSaveContract);
+        
+        let member1 = Address::generate(&env);
+        let member2 = Address::generate(&env);
+        let group_id = 1;
+        let cycle = 0;
+        let amount = 10_000_000;
+        let timestamp = 12345u64;
+        
+        // Setup: Pre-set some totals (simulating previous contributions)
+        let total_key = StorageKeyBuilder::contribution_cycle_total(group_id, cycle);
+        env.storage().persistent().set(&total_key, &50_000_000i128);
+        
+        let count_key = StorageKeyBuilder::contribution_cycle_count(group_id, cycle);
+        env.storage().persistent().set(&count_key, &5u32);
+        
+        // Action: Record new contribution
+        env.as_contract(&contract_id, || {
+            StellarSaveContract::record_contribution(
+                &env,
+                group_id,
+                cycle,
+                member1.clone(),
+                amount,
+                timestamp
+            )
+        }).unwrap();
+        
+        // Verify: Total was incremented
+        let total: i128 = env.storage().persistent().get(&total_key).unwrap();
+        assert_eq!(total, 60_000_000); // 50M + 10M
+        
+        // Verify: Count was incremented
+        let count: u32 = env.storage().persistent().get(&count_key).unwrap();
+        assert_eq!(count, 6); // 5 + 1
+    }
+    
+    #[test]
+    fn test_record_contribution_zero_initial_totals() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarSaveContract);
+        
+        let member = Address::generate(&env);
+        let group_id = 1;
+        let cycle = 0;
+        let amount = 10_000_000;
+        let timestamp = 12345u64;
+        
+        // Verify: No totals exist initially
+        let total_key = StorageKeyBuilder::contribution_cycle_total(group_id, cycle);
+        assert!(!env.storage().persistent().has(&total_key));
+        
+        let count_key = StorageKeyBuilder::contribution_cycle_count(group_id, cycle);
+        assert!(!env.storage().persistent().has(&count_key));
+        
+        // Action: Record first contribution
+        env.as_contract(&contract_id, || {
+            StellarSaveContract::record_contribution(
+                &env,
+                group_id,
+                cycle,
+                member.clone(),
+                amount,
+                timestamp
+            )
+        }).unwrap();
+        
+        // Verify: Totals were initialized correctly
+        let total: i128 = env.storage().persistent().get(&total_key).unwrap();
+        assert_eq!(total, amount);
+        
+        let count: u32 = env.storage().persistent().get(&count_key).unwrap();
+        assert_eq!(count, 1);
+    }
+    
+    #[test]
+    fn test_record_contribution_large_amount() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarSaveContract);
+        
+        let member = Address::generate(&env);
+        let group_id = 1;
+        let cycle = 0;
+        let amount = 1_000_000_000_000i128; // 100,000 XLM
+        let timestamp = 12345u64;
+        
+        // Action: Record large contribution
+        let result = env.as_contract(&contract_id, || {
+            StellarSaveContract::record_contribution(
+                &env,
+                group_id,
+                cycle,
+                member.clone(),
+                amount,
+                timestamp
+            )
+        });
+        
+        // Verify: Success
+        assert!(result.is_ok());
+        
+        // Verify: Large amount was stored correctly
+        let total_key = StorageKeyBuilder::contribution_cycle_total(group_id, cycle);
+        let total: i128 = env.storage().persistent().get(&total_key).unwrap();
+        assert_eq!(total, amount);
     }
 }
 
