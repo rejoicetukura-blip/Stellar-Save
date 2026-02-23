@@ -1,5 +1,17 @@
-import "./App.css";
+import {
+  Alert,
+  Box,
+  Chip,
+  Stack,
+  Typography,
+} from "@mui/material";
 import { useWallet } from "./hooks/useWallet";
+import {
+  AppButton,
+  AppCard,
+  AppSelectField,
+  type SelectOption,
+} from "./ui/components";
 
 function App() {
   const {
@@ -18,86 +30,100 @@ function App() {
   } = useWallet();
 
   const selectedWallet = wallets.find((wallet) => wallet.id === selectedWalletId);
-  const isConnected = status === "connected";
   const canConnect = Boolean(selectedWallet?.installed) && status !== "connecting";
+  const walletOptions: SelectOption[] = wallets.map((wallet) => ({
+    value: wallet.id,
+    label: `${wallet.name} ${wallet.installed ? "(Installed)" : "(Not Installed)"}`,
+  }));
+  const connectedAccountOptions: SelectOption[] =
+    connectedAccounts.length === 0
+      ? [{ value: "", label: "No accounts connected" }]
+      : connectedAccounts.map((address) => ({ value: address, label: address }));
 
   return (
-    <main className="wallet-page">
-      <section className="wallet-card">
-        <header className="wallet-header">
-          <p className="wallet-label">Stellar Save</p>
-          <h1>Wallet Integration</h1>
-          <p className="wallet-subtitle">
-            Freighter support is enabled. Additional Stellar wallets can be added
-            through the adapter layer.
-          </p>
-        </header>
+    <Box
+      component="main"
+      sx={{
+        minHeight: "100vh",
+        width: "100%",
+        display: "grid",
+        placeItems: "center",
+        p: { xs: 2, md: 4 },
+      }}
+    >
+      <AppCard sx={{ width: "min(760px, 100%)" }}>
+        <Stack spacing={2}>
+          <Box>
+            <Typography
+              sx={{
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+                color: "primary.main",
+                fontSize: "0.75rem",
+                fontWeight: 700,
+              }}
+            >
+              Stellar Save
+            </Typography>
+            <Typography variant="h1" sx={{ mt: 0.5 }}>
+              Wallet Integration
+            </Typography>
+            <Typography color="text.secondary" sx={{ mt: 0.75 }}>
+              UI now uses a centralized MUI theme with reusable wrapper components.
+            </Typography>
+          </Box>
 
-        <div className="wallet-section">
-          <label htmlFor="wallet-select">Wallet</label>
-          <select
+          <AppSelectField
             id="wallet-select"
+            label="Wallet"
             value={selectedWalletId}
-            onChange={(event) => void switchWallet(event.target.value)}
-          >
-            {wallets.map((wallet) => (
-              <option key={wallet.id} value={wallet.id}>
-                {wallet.name} {wallet.installed ? "(Installed)" : "(Not Installed)"}
-              </option>
-            ))}
-          </select>
-        </div>
+            options={walletOptions}
+            onChange={(event) => void switchWallet(event.target.value as string)}
+          />
 
-        <div className="wallet-actions">
-          <button type="button" onClick={() => void refreshWallets()}>
-            Detect Wallets
-          </button>
-          <button type="button" onClick={() => void connect()} disabled={!canConnect}>
-            {status === "connecting" ? "Connecting..." : "Connect Wallet"}
-          </button>
-          <button type="button" onClick={disconnect} disabled={!isConnected}>
-            Disconnect
-          </button>
-        </div>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+            <AppButton onClick={() => void refreshWallets()}>
+              Detect Wallets
+            </AppButton>
+            <AppButton onClick={() => void connect()} disabled={!canConnect}>
+              {status === "connecting" ? "Connecting..." : "Connect Wallet"}
+            </AppButton>
+            <AppButton
+              onClick={disconnect}
+              disabled={status !== "connected"}
+              color="secondary"
+            >
+              Disconnect
+            </AppButton>
+          </Stack>
 
-        <div className="wallet-section">
-          <label htmlFor="account-select">Connected Accounts</label>
-          <select
+          <AppSelectField
             id="account-select"
+            label="Connected Accounts"
             value={activeAddress ?? ""}
+            options={connectedAccountOptions}
+            onChange={(event) => switchAccount(event.target.value as string)}
             disabled={connectedAccounts.length === 0}
-            onChange={(event) => switchAccount(event.target.value)}
-          >
-            {connectedAccounts.length === 0 ? (
-              <option value="">No accounts connected</option>
-            ) : (
-              connectedAccounts.map((address) => (
-                <option key={address} value={address}>
-                  {address}
-                </option>
-              ))
-            )}
-          </select>
-        </div>
+          />
 
-        <dl className="wallet-meta">
-          <div>
-            <dt>Status</dt>
-            <dd>{status}</dd>
-          </div>
-          <div>
-            <dt>Network</dt>
-            <dd>{network ?? "Not connected"}</dd>
-          </div>
-          <div>
-            <dt>Active Address</dt>
-            <dd className="address">{activeAddress ?? "Not connected"}</dd>
-          </div>
-        </dl>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+            <Chip label={`Status: ${status}`} color="primary" variant="outlined" />
+            <Chip label={`Network: ${network ?? "Not connected"}`} />
+          </Stack>
 
-        {error ? <p className="wallet-error">{error}</p> : null}
-      </section>
-    </main>
+          <Box>
+            <Typography variant="subtitle2" color="text.secondary">
+              Active Address
+            </Typography>
+            <Typography sx={{ wordBreak: "break-all" }}>
+              {activeAddress ?? "Not connected"}
+            </Typography>
+          </Box>
+
+          {error ? <Alert severity="error">{error}</Alert> : null}
+        </Stack>
+      </AppCard>
+    </Box>
   );
 }
 
