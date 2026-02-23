@@ -353,6 +353,30 @@ impl StellarSaveContract {
         env.storage().persistent().get(&key).unwrap_or(0)
     }
 
+    /// Retrieves contribution details for a member in a cycle.
+    /// 
+    /// # Arguments
+    /// * `env` - Soroban environment
+    /// * `group_id` - ID of the group
+    /// * `cycle_number` - The cycle number
+    /// * `member` - Address of the member
+    /// 
+    /// # Returns
+    /// * `Ok(ContributionRecord)` - The contribution record
+    /// * `Err(StellarSaveError)` if contribution not found
+    pub fn get_contribution(
+        env: Env,
+        group_id: u64,
+        cycle_number: u32,
+        member: Address,
+    ) -> Result<ContributionRecord, StellarSaveError> {
+        let key = StorageKeyBuilder::contribution_individual(group_id, cycle_number, member);
+        env.storage()
+            .persistent()
+            .get(&key)
+            .ok_or(StellarSaveError::ContributionNotFound)
+    }
+
     /// Allows a member to contribute to the current cycle.
     /// 
     /// # Arguments
@@ -762,5 +786,162 @@ mod tests {
         // Action: Try to contribute while group is pending
         env.mock_all_auths();
         client.contribute(&group_id, &member);
+    }
+
+    #[test]
+    fn test_get_contribution_success() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarSaveContract);
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        let member = Address::generate(&env);
+
+        let group_id = 1;
+        let cycle = 0;
+        let amount = 100;
+        let timestamp = env.ledger().timestamp();
+        
+        // Setup: Create and store a contribution
+        let contribution = ContributionRecord::new(
+            member.clone(),
+            group_id,
+            cycle,
+            amount,
+            timestamp,
+        );
+        let key = StorageKeyBuilder::contribution_individual(group_id, cycle, member.clone());
+        env.storage().persistent().set(&key, &contribution);
+
+        // Action: Get contribution
+        let result = client.get_contribution(&group_id, &cycle, &member);
+        
+        // Verify: Contribution matches
+        assert_eq!(result.member_address, member);
+        assert_eq!(result.group_id, group_id);
+        assert_eq!(result.cycle_number, cycle);
+        assert_eq!(result.amount, amount);
+        assert_eq!(result.timestamp, timestamp);
+    }
+
+    #[test]
+    #[should_panic(expected = "Status(ContractError(3004))")] // ContributionNotFound
+    fn test_get_contribution_not_found() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarSaveContract);
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        let member = Address::generate(&env);
+
+        // Action: Try to get non-existent contribution
+        client.get_contribution(&1, &0, &member);
+    }
+
+    #[test]
+    fn test_get_contribution_different_cycles() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarSaveContract);
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        let member = Address::generate(&env);
+
+        let group_id = 1;
+        
+        // Setup: Create contributions for different cycles
+        let contrib_cycle0 = ContributionRecord::new(
+            member.clone(),
+            group_id,
+            0,
+            100,
+            1000,
+        );
+        let contrib_cycle1 = ContributionRecord::new(
+            member.clone(),
+            group_id,
+            1,
+            200,
+            2000,
+        );
+        
+        env.storage().persistent().set(
+            &StorageKeyBuilder::contribution_individual(group_id, 0, member.clone()),
+            &contrib_cycle0,
+        );
+        env.storage().persistent().set(
+            &StorageKeyBuilder::contribution_individual(group_id, 1, member.clone()),
+            &contrib_cycle1,
+        );
+
+        // Action: Get contributions for different cycles
+        let result0 = client.get_contribution(&group_id, &0, &member);
+        let result1 = client.get_contribution(&group_id, &1, &member);
+        
+        // Verify: Each cycle has correct data
+        assert_eq!(result0.cycle_number, 0);
+        assert_eq!(result0.amount, 100);
+        assert_eq!(result0.timestamp, 1000);
+        
+        assert_eq!(result1.cycle_number, 1);
+        assert_eq!(result1.amount, 200);
+        assert_eq!(result1.timestamp, 2000);
+    }
+
+    #[test]
+    fn test_get_contribution_different_members() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarSaveContract);
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        
+        let member1 = Address::generate(&env);
+        let member2 = Address::generate(&env);
+
+        let group_id = 1;
+        let cycle = 0;
+        
+        // Setup: Create contributions for different members
+        let contrib1 = ContributionRecord::new(member1.clone(), group_id, cycle, 100, 1000);
+        let contrib2 = ContributionRecord::new(member2.clone(), group_id, cycle, 100, 2000);
+        
+        env.storage().persistent().set(
+            &StorageKeyBuilder::contribution_individual(group_id, cycle, member1.clone()),
+            &contrib1,
+        );
+        env.storage().persistent().set(
+            &StorageKeyBuilder::contribution_individual(group_id, cycle, member2.clone()),
+            &contrib2,
+        );
+
+        // Action: Get contributions for different members
+        let result1 = client.get_contribution(&group_id, &cycle, &member1);
+        let result2 = client.get_contribution(&group_id, &cycle, &member2);
+        
+        // Verify: Each member has correct data
+        assert_eq!(result1.member_address, member1);
+        assert_eq!(result1.timestamp, 1000);
+        
+        assert_eq!(result2.member_address, member2);
+        assert_eq!(result2.timestamp, 2000);
+    }
+
+    #[test]
+    fn test_get_contribution_validates_record() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarSaveContract);
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        let member = Address::generate(&env);
+
+        let group_id = 1;
+        let cycle = 0;
+        
+        // Setup: Create a valid contribution
+        let contribution = ContributionRecord::new(member.clone(), group_id, cycle, 100, 1000);
+        env.storage().persistent().set(
+            &StorageKeyBuilder::contribution_individual(group_id, cycle, member.clone()),
+            &contribution,
+        );
+
+        // Action: Get contribution
+        let result = client.get_contribution(&group_id, &cycle, &member);
+        
+        // Verify: Record is valid
+        assert!(result.validate());
+        assert!(result.matches_group_and_cycle(group_id, cycle));
+        assert!(result.is_from_member(&member));
     }
 }
