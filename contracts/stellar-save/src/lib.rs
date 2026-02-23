@@ -999,6 +999,71 @@ impl StellarSaveContract {
         Ok(missed_members)
     }
 
+    /// Calculates the deadline timestamp for contributions in a specific cycle.
+    /// 
+    /// The deadline is calculated as: cycle_start_time + cycle_duration
+    /// where cycle_start_time = started_at + (cycle_number * cycle_duration)
+    /// 
+    /// This function is useful for:
+    /// - Displaying countdown timers to users
+    /// - Enforcing contribution deadlines
+    /// - Determining if a cycle has expired
+    /// - Scheduling automated reminders
+    /// 
+    /// # Arguments
+    /// * `env` - Soroban environment
+    /// * `group_id` - ID of the group
+    /// * `cycle_number` - The cycle number to calculate deadline for
+    /// 
+    /// # Returns
+    /// * `Ok(u64)` - Unix timestamp (seconds) when the cycle deadline expires
+    /// * `Err(StellarSaveError::GroupNotFound)` - If the group doesn't exist
+    /// * `Err(StellarSaveError::InvalidState)` - If the group hasn't been started yet
+    /// * `Err(StellarSaveError::Overflow)` - If timestamp calculation overflows
+    /// 
+    /// # Example
+    /// ```ignore
+    /// // Get deadline for cycle 0
+    /// let deadline = contract.get_contribution_deadline(env, 1, 0)?;
+    /// let current_time = env.ledger().timestamp();
+    /// if current_time > deadline {
+    ///     // Cycle has expired
+    /// }
+    /// ```
+    pub fn get_contribution_deadline(
+        env: Env,
+        group_id: u64,
+        cycle_number: u32,
+    ) -> Result<u64, StellarSaveError> {
+        // 1. Load the group from storage
+        let group_key = StorageKeyBuilder::group_data(group_id);
+        let group = env.storage()
+            .persistent()
+            .get::<_, Group>(&group_key)
+            .ok_or(StellarSaveError::GroupNotFound)?;
+        
+        // 2. Verify the group has been started
+        if !group.started {
+            return Err(StellarSaveError::InvalidState);
+        }
+        
+        // 3. Calculate cycle start time: started_at + (cycle_number * cycle_duration)
+        let cycle_offset = (cycle_number as u64)
+            .checked_mul(group.cycle_duration)
+            .ok_or(StellarSaveError::Overflow)?;
+        
+        let cycle_start_time = group.started_at
+            .checked_add(cycle_offset)
+            .ok_or(StellarSaveError::Overflow)?;
+        
+        // 4. Calculate deadline: cycle_start_time + cycle_duration
+        let deadline = cycle_start_time
+            .checked_add(group.cycle_duration)
+            .ok_or(StellarSaveError::Overflow)?;
+        
+        Ok(deadline)
+    }
+
     /// Allows a user to join an existing savings group.
     /// 
     /// Users can join groups that are in Pending status (not yet activated).
@@ -3584,6 +3649,277 @@ mod tests {
         let total_key = StorageKeyBuilder::contribution_cycle_total(group_id, cycle);
         let total: i128 = env.storage().persistent().get(&total_key).unwrap();
         assert_eq!(total, amount);
+    }
+
+    // Tests for get_contribution_deadline function
+    
+    #[test]
+    fn test_get_contribution_deadline_cycle_0() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarSaveContract);
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        
+        let creator = Address::generate(&env);
+        let group_id = 1;
+        let cycle_duration = 604800u64; // 1 week in seconds
+        let started_at = 1000000u64;
+        
+        // Setup: Create a started group
+        let mut group = Group::new(group_id, creator.clone(), 100, cycle_duration, 5, 2, started_at);
+        group.started = true;
+        group.started_at = started_at;
+        env.storage().persistent().set(&StorageKeyBuilder::group_data(group_id), &group);
+        
+        // Action: Get deadline for cycle 0
+        let deadline = client.get_contribution_deadline(&group_id, &0);
+        
+        // Verify: Deadline is started_at + cycle_duration
+        assert_eq!(deadline, started_at + cycle_duration);
+    }
+    
+    #[test]
+    fn test_get_contribution_deadline_cycle_1() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarSaveContract);
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        
+        let creator = Address::generate(&env);
+        let group_id = 1;
+        let cycle_duration = 604800u64; // 1 week
+        let started_at = 1000000u64;
+        
+        // Setup: Create a started group
+        let mut group = Group::new(group_id, creator.clone(), 100, cycle_duration, 5, 2, started_at);
+        group.started = true;
+        group.started_at = started_at;
+        env.storage().persistent().set(&StorageKeyBuilder::group_data(group_id), &group);
+        
+        // Action: Get deadline for cycle 1
+        let deadline = client.get_contribution_deadline(&group_id, &1);
+        
+        // Verify: Deadline is started_at + (2 * cycle_duration)
+        // Cycle 1 starts at started_at + cycle_duration, ends at started_at + (2 * cycle_duration)
+        assert_eq!(deadline, started_at + (2 * cycle_duration));
+    }
+    
+    #[test]
+    fn test_get_contribution_deadline_multiple_cycles() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarSaveContract);
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        
+        let creator = Address::generate(&env);
+        let group_id = 1;
+        let cycle_duration = 86400u64; // 1 day
+        let started_at = 1000000u64;
+        
+        // Setup: Create a started group
+        let mut group = Group::new(group_id, creator.clone(), 100, cycle_duration, 10, 2, started_at);
+        group.started = true;
+        group.started_at = started_at;
+        env.storage().persistent().set(&StorageKeyBuilder::group_data(group_id), &group);
+        
+        // Action: Get deadlines for cycles 0-4
+        for cycle in 0..5 {
+            let deadline = client.get_contribution_deadline(&group_id, &cycle);
+            let expected = started_at + ((cycle + 1) as u64 * cycle_duration);
+            assert_eq!(deadline, expected);
+        }
+    }
+    
+    #[test]
+    #[should_panic(expected = "Status(ContractError(1001))")] // GroupNotFound
+    fn test_get_contribution_deadline_group_not_found() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarSaveContract);
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        
+        // Action: Try to get deadline for non-existent group
+        client.get_contribution_deadline(&999, &0);
+    }
+    
+    #[test]
+    #[should_panic(expected = "Status(ContractError(1003))")] // InvalidState
+    fn test_get_contribution_deadline_group_not_started() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarSaveContract);
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        
+        let creator = Address::generate(&env);
+        let group_id = 1;
+        let cycle_duration = 604800u64;
+        let created_at = 1000000u64;
+        
+        // Setup: Create a group that hasn't been started
+        let group = Group::new(group_id, creator.clone(), 100, cycle_duration, 5, 2, created_at);
+        // Note: group.started is false by default
+        env.storage().persistent().set(&StorageKeyBuilder::group_data(group_id), &group);
+        
+        // Action: Try to get deadline for unstarted group
+        client.get_contribution_deadline(&group_id, &0);
+    }
+    
+    #[test]
+    fn test_get_contribution_deadline_different_durations() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarSaveContract);
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        
+        let creator = Address::generate(&env);
+        let started_at = 1000000u64;
+        
+        // Test with 1 week duration
+        let group1_id = 1;
+        let duration1 = 604800u64; // 1 week
+        let mut group1 = Group::new(group1_id, creator.clone(), 100, duration1, 5, 2, started_at);
+        group1.started = true;
+        group1.started_at = started_at;
+        env.storage().persistent().set(&StorageKeyBuilder::group_data(group1_id), &group1);
+        
+        // Test with 1 month duration
+        let group2_id = 2;
+        let duration2 = 2592000u64; // 30 days
+        let mut group2 = Group::new(group2_id, creator.clone(), 100, duration2, 5, 2, started_at);
+        group2.started = true;
+        group2.started_at = started_at;
+        env.storage().persistent().set(&StorageKeyBuilder::group_data(group2_id), &group2);
+        
+        // Verify: Different deadlines based on duration
+        let deadline1 = client.get_contribution_deadline(&group1_id, &0);
+        let deadline2 = client.get_contribution_deadline(&group2_id, &0);
+        
+        assert_eq!(deadline1, started_at + duration1);
+        assert_eq!(deadline2, started_at + duration2);
+        assert_ne!(deadline1, deadline2);
+    }
+    
+    #[test]
+    fn test_get_contribution_deadline_time_remaining() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarSaveContract);
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        
+        let creator = Address::generate(&env);
+        let group_id = 1;
+        let cycle_duration = 604800u64; // 1 week
+        let started_at = 1000000u64;
+        
+        // Setup: Create a started group
+        let mut group = Group::new(group_id, creator.clone(), 100, cycle_duration, 5, 2, started_at);
+        group.started = true;
+        group.started_at = started_at;
+        env.storage().persistent().set(&StorageKeyBuilder::group_data(group_id), &group);
+        
+        // Action: Get deadline and calculate time remaining
+        let deadline = client.get_contribution_deadline(&group_id, &0);
+        let current_time = started_at + 100000; // Some time into the cycle
+        
+        // Verify: Can calculate time remaining
+        assert!(deadline > current_time);
+        let time_remaining = deadline - current_time;
+        assert_eq!(time_remaining, cycle_duration - 100000);
+    }
+    
+    #[test]
+    fn test_get_contribution_deadline_expired_cycle() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarSaveContract);
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        
+        let creator = Address::generate(&env);
+        let group_id = 1;
+        let cycle_duration = 604800u64; // 1 week
+        let started_at = 1000000u64;
+        
+        // Setup: Create a started group
+        let mut group = Group::new(group_id, creator.clone(), 100, cycle_duration, 5, 2, started_at);
+        group.started = true;
+        group.started_at = started_at;
+        env.storage().persistent().set(&StorageKeyBuilder::group_data(group_id), &group);
+        
+        // Action: Get deadline for cycle 0
+        let deadline = client.get_contribution_deadline(&group_id, &0);
+        
+        // Verify: Can check if cycle has expired
+        let current_time = started_at + cycle_duration + 1000; // After deadline
+        assert!(current_time > deadline);
+    }
+    
+    #[test]
+    fn test_get_contribution_deadline_high_cycle_number() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarSaveContract);
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        
+        let creator = Address::generate(&env);
+        let group_id = 1;
+        let cycle_duration = 86400u64; // 1 day
+        let started_at = 1000000u64;
+        
+        // Setup: Create a started group with many cycles
+        let mut group = Group::new(group_id, creator.clone(), 100, cycle_duration, 100, 2, started_at);
+        group.started = true;
+        group.started_at = started_at;
+        env.storage().persistent().set(&StorageKeyBuilder::group_data(group_id), &group);
+        
+        // Action: Get deadline for cycle 50
+        let deadline = client.get_contribution_deadline(&group_id, &50);
+        
+        // Verify: Correct calculation for high cycle number
+        let expected = started_at + (51 * cycle_duration);
+        assert_eq!(deadline, expected);
+    }
+    
+    #[test]
+    fn test_get_contribution_deadline_short_duration() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarSaveContract);
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        
+        let creator = Address::generate(&env);
+        let group_id = 1;
+        let cycle_duration = 3600u64; // 1 hour
+        let started_at = 1000000u64;
+        
+        // Setup: Create a started group with short cycle
+        let mut group = Group::new(group_id, creator.clone(), 100, cycle_duration, 5, 2, started_at);
+        group.started = true;
+        group.started_at = started_at;
+        env.storage().persistent().set(&StorageKeyBuilder::group_data(group_id), &group);
+        
+        // Action: Get deadline for cycle 0
+        let deadline = client.get_contribution_deadline(&group_id, &0);
+        
+        // Verify: Correct deadline for short duration
+        assert_eq!(deadline, started_at + cycle_duration);
+        assert_eq!(deadline, started_at + 3600);
+    }
+    
+    #[test]
+    fn test_get_contribution_deadline_consistency() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarSaveContract);
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        
+        let creator = Address::generate(&env);
+        let group_id = 1;
+        let cycle_duration = 604800u64;
+        let started_at = 1000000u64;
+        
+        // Setup: Create a started group
+        let mut group = Group::new(group_id, creator.clone(), 100, cycle_duration, 5, 2, started_at);
+        group.started = true;
+        group.started_at = started_at;
+        env.storage().persistent().set(&StorageKeyBuilder::group_data(group_id), &group);
+        
+        // Action: Call multiple times for same cycle
+        let deadline1 = client.get_contribution_deadline(&group_id, &0);
+        let deadline2 = client.get_contribution_deadline(&group_id, &0);
+        let deadline3 = client.get_contribution_deadline(&group_id, &0);
+        
+        // Verify: Always returns same value
+        assert_eq!(deadline1, deadline2);
+        assert_eq!(deadline2, deadline3);
     }
 }
 
