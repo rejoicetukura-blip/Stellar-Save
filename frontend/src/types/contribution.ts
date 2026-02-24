@@ -31,3 +31,18 @@ export interface ContributeButtonProps {
   onError?: (error: Error) => void
   disabled?: boolean
 }
+
+export type MemberStatus = 'active' | 'inactive' | 'pending' | 'removed'
+
+export interface MemberCardData {
+  address: string
+  name?: string
+  avatar?: string
+  joinDate: Date
+  contributionCount: number
+  totalContributed: number
+  payoutPosition: number
+  totalMembers: number
+  hasReceivedPayout: boolean
+  status: MemberStatus
+}
