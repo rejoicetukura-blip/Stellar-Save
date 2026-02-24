@@ -4377,6 +4377,236 @@ mod tests {
         assert_eq!(deadline2, deadline3);
     }
 
+    // Tests for get_next_payout_cycle function
+    
+    #[test]
+    fn test_get_next_payout_cycle_current_cycle_0() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarSaveContract);
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        
+        let creator = Address::generate(&env);
+        let group_id = 1;
+        let cycle_duration = 604800u64; // 1 week in seconds
+        let started_at = 1000000u64;
+        
+        // Setup: Create a started group with current_cycle = 0
+        let mut group = Group::new(group_id, creator.clone(), 100, cycle_duration, 5, 2, started_at);
+        group.started = true;
+        group.started_at = started_at;
+        group.current_cycle = 0;
+        env.storage().persistent().set(&StorageKeyBuilder::group_data(group_id), &group);
+        
+        // Action: Get next payout cycle time
+        let next_payout_time = client.get_next_payout_cycle(&group_id);
+        
+        // Verify: Next payout is at started_at + (2 * cycle_duration)
+        // current_cycle = 0, next_cycle = 1, so next_payout = started_at + ((1+1) * cycle_duration)
+        let expected = started_at + (2 * cycle_duration);
+        assert_eq!(next_payout_time, expected);
+    }
+    
+    #[test]
+    fn test_get_next_payout_cycle_current_cycle_2() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarSaveContract);
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        
+        let creator = Address::generate(&env);
+        let group_id = 1;
+        let cycle_duration = 86400u64; // 1 day
+        let started_at = 1000000u64;
+        
+        // Setup: Create a started group with current_cycle = 2
+        let mut group = Group::new(group_id, creator.clone(), 100, cycle_duration, 5, 2, started_at);
+        group.started = true;
+        group.started_at = started_at;
+        group.current_cycle = 2;
+        env.storage().persistent().set(&StorageKeyBuilder::group_data(group_id), &group);
+        
+        // Action: Get next payout cycle time
+        let next_payout_time = client.get_next_payout_cycle(&group_id);
+        
+        // Verify: Next payout is at started_at + (4 * cycle_duration)
+        // current_cycle = 2, next_cycle = 3, so next_payout = started_at + ((3+1) * cycle_duration)
+        let expected = started_at + (4 * cycle_duration);
+        assert_eq!(next_payout_time, expected);
+    }
+    
+    #[test]
+    fn test_get_next_payout_cycle_different_durations() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarSaveContract);
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        
+        let creator = Address::generate(&env);
+        let started_at = 1000000u64;
+        
+        // Test with 1 hour duration
+        let group1_id = 1;
+        let duration1 = 3600u64; // 1 hour
+        let mut group1 = Group::new(group1_id, creator.clone(), 100, duration1, 5, 2, started_at);
+        group1.started = true;
+        group1.started_at = started_at;
+        group1.current_cycle = 0;
+        env.storage().persistent().set(&StorageKeyBuilder::group_data(group1_id), &group1);
+        
+        // Test with 1 week duration
+        let group2_id = 2;
+        let duration2 = 604800u64; // 1 week
+        let mut group2 = Group::new(group2_id, creator.clone(), 100, duration2, 5, 2, started_at);
+        group2.started = true;
+        group2.started_at = started_at;
+        group2.current_cycle = 0;
+        env.storage().persistent().set(&StorageKeyBuilder::group_data(group2_id), &group2);
+        
+        // Action: Get next payout times
+        let next_payout1 = client.get_next_payout_cycle(&group1_id);
+        let next_payout2 = client.get_next_payout_cycle(&group2_id);
+        
+        // Verify: Different next payout times based on duration
+        assert_eq!(next_payout1, started_at + (2 * duration1));
+        assert_eq!(next_payout2, started_at + (2 * duration2));
+        assert_ne!(next_payout1, next_payout2);
+    }
+    
+    #[test]
+    fn test_get_next_payout_cycle_high_cycle_number() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarSaveContract);
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        
+        let creator = Address::generate(&env);
+        let group_id = 1;
+        let cycle_duration = 86400u64; // 1 day
+        let started_at = 1000000u64;
+        
+        // Setup: Create a started group with high current_cycle
+        let mut group = Group::new(group_id, creator.clone(), 100, cycle_duration, 100, 2, started_at);
+        group.started = true;
+        group.started_at = started_at;
+        group.current_cycle = 50;
+        env.storage().persistent().set(&StorageKeyBuilder::group_data(group_id), &group);
+        
+        // Action: Get next payout cycle time
+        let next_payout_time = client.get_next_payout_cycle(&group_id);
+        
+        // Verify: Correct calculation for high cycle number
+        // current_cycle = 50, next_cycle = 51, so next_payout = started_at + ((51+1) * cycle_duration)
+        let expected = started_at + (52 * cycle_duration);
+        assert_eq!(next_payout_time, expected);
+    }
+    
+    #[test]
+    #[should_panic(expected = "Status(ContractError(1001))")] // GroupNotFound
+    fn test_get_next_payout_cycle_group_not_found() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarSaveContract);
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        
+        // Action: Try to get next payout for non-existent group
+        client.get_next_payout_cycle(&999);
+    }
+    
+    #[test]
+    #[should_panic(expected = "Status(ContractError(1003))")] // InvalidState
+    fn test_get_next_payout_cycle_group_not_started() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarSaveContract);
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        
+        let creator = Address::generate(&env);
+        let group_id = 1;
+        let cycle_duration = 604800u64;
+        let created_at = 1000000u64;
+        
+        // Setup: Create a group that hasn't been started
+        let group = Group::new(group_id, creator.clone(), 100, cycle_duration, 5, 2, created_at);
+        env.storage().persistent().set(&StorageKeyBuilder::group_data(group_id), &group);
+        
+        // Action: Try to get next payout for unstarted group
+        client.get_next_payout_cycle(&group_id);
+    }
+    
+    #[test]
+    #[should_panic(expected = "Status(ContractError(1003))")] // InvalidState
+    fn test_get_next_payout_cycle_group_complete() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarSaveContract);
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        
+        let creator = Address::generate(&env);
+        let group_id = 1;
+        let cycle_duration = 604800u64;
+        let started_at = 1000000u64;
+        
+        // Setup: Create a completed group (current_cycle >= max_members)
+        let mut group = Group::new(group_id, creator.clone(), 100, cycle_duration, 5, 2, started_at);
+        group.started = true;
+        group.started_at = started_at;
+        group.current_cycle = 5; // Equal to max_members, so group is complete
+        env.storage().persistent().set(&StorageKeyBuilder::group_data(group_id), &group);
+        
+        // Action: Try to get next payout for completed group
+        client.get_next_payout_cycle(&group_id);
+    }
+    
+    #[test]
+    fn test_get_next_payout_cycle_time_remaining() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarSaveContract);
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        
+        let creator = Address::generate(&env);
+        let group_id = 1;
+        let cycle_duration = 604800u64; // 1 week
+        let started_at = 1000000u64;
+        
+        // Setup: Create a started group
+        let mut group = Group::new(group_id, creator.clone(), 100, cycle_duration, 5, 2, started_at);
+        group.started = true;
+        group.started_at = started_at;
+        group.current_cycle = 0;
+        env.storage().persistent().set(&StorageKeyBuilder::group_data(group_id), &group);
+        
+        // Action: Get next payout time and calculate time remaining
+        let next_payout_time = client.get_next_payout_cycle(&group_id);
+        let current_time = started_at + cycle_duration + 100000; // Some time into cycle 1
+        
+        // Verify: Can calculate time until next payout
+        assert!(next_payout_time > current_time);
+        let time_until_payout = next_payout_time - current_time;
+        assert!(time_until_payout > 0);
+    }
+    
+    #[test]
+    fn test_get_next_payout_cycle_consistency() {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, StellarSaveContract);
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        
+        let creator = Address::generate(&env);
+        let group_id = 1;
+        let cycle_duration = 604800u64;
+        let started_at = 1000000u64;
+        
+        // Setup: Create a started group
+        let mut group = Group::new(group_id, creator.clone(), 100, cycle_duration, 5, 2, started_at);
+        group.started = true;
+        group.started_at = started_at;
+        group.current_cycle = 1;
+        env.storage().persistent().set(&StorageKeyBuilder::group_data(group_id), &group);
+        
+        // Action: Call multiple times
+        let next_payout1 = client.get_next_payout_cycle(&group_id);
+        let next_payout2 = client.get_next_payout_cycle(&group_id);
+        let next_payout3 = client.get_next_payout_cycle(&group_id);
+        
+        // Verify: Always returns same value
+        assert_eq!(next_payout1, next_payout2);
+        assert_eq!(next_payout2, next_payout3);
+    }
+
     #[test]
     fn test_is_payout_due_group_not_found() {
         let env = Env::default();
