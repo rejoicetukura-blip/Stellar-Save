@@ -38,7 +38,11 @@ pub use status::StatusError;
 pub use storage::{StorageKey, StorageKeyBuilder};
 pub use pool::{PoolInfo, PoolCalculator};
 pub use events::EventEmitter;
-use soroban_sdk::{contract, contractimpl, contracttype, Env, Address, Vec, Symbol};
+use soroban_sdk::{
+    contracttype, contractimpl, contracterror, Address, Env, Vec, Map, symbol_short,
+    panic_with_error
+};
+use core::cmp;
 
 #[contract]
 pub struct StellarSaveContract;
@@ -694,26 +698,27 @@ impl StellarSaveContract {
             }
         }
 
-        // 4. Sort by cycle number (already in order due to iteration, but ensuring consistency)
-        all_payouts.sort_by(|a, b| a.cycle_number.cmp(&b.cycle_number));
+        // 4. Payouts are already sorted by cycle number due to iteration order
 
         // 5. Apply pagination
-        let total_records = all_payouts.len();
-        let start_index = offset as usize;
+        let total_records = all_payouts.len() as u32;
+        let start_index = offset;
         
         // If offset is beyond total records, return empty vector
         if start_index >= total_records {
             return Ok(Vec::new(&env));
         }
 
-        let end_index = std::cmp::min(
-            start_index.checked_add(limit as usize).ok_or(StellarSaveError::Overflow)?,
+        let end_index = cmp::min(
+            start_index.checked_add(limit).ok_or(StellarSaveError::Overflow)?,
             total_records
         );
 
         let mut paginated_payouts = Vec::new(&env);
         for i in start_index..end_index {
-            paginated_payouts.push_back(all_payouts.get(i).unwrap().clone());
+            if let Some(payout) = all_payouts.get(i) {
+                paginated_payouts.push_back(payout);
+            }
         }
 
         Ok(paginated_payouts)
