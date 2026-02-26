@@ -652,6 +652,62 @@ impl StellarSaveContract {
         Ok(total)
     }
 
+    /// Gets the current balance held for a specific group.
+    ///
+    /// Calculates the balance by summing all contributions across all cycles
+    /// and subtracting all payouts that have been made.
+    ///
+    /// # Arguments
+    /// * `env` - Soroban environment
+    /// * `group_id` - ID of the group
+    ///
+    /// # Returns
+    /// * `Ok(i128)` - Current balance held for the group in stroops
+    /// * `Err(StellarSaveError::GroupNotFound)` - If group doesn't exist
+    /// * `Err(StellarSaveError::Overflow)` - If calculation overflows
+    pub fn get_group_balance(env: Env, group_id: u64) -> Result<i128, StellarSaveError> {
+        let group_key = StorageKeyBuilder::group_data(group_id);
+        let group = env
+            .storage()
+            .persistent()
+            .get::<_, Group>(&group_key)
+            .ok_or(StellarSaveError::GroupNotFound)?;
+
+        let mut total_contributions: i128 = 0;
+        let mut total_payouts: i128 = 0;
+
+        // Sum all contributions across all cycles
+        for cycle in 0..=group.current_cycle {
+            let total_key = StorageKeyBuilder::contribution_cycle_total(group_id, cycle);
+            if let Some(cycle_total) = env.storage().persistent().get::<_, i128>(&total_key) {
+                total_contributions = total_contributions
+                    .checked_add(cycle_total)
+                    .ok_or(StellarSaveError::Overflow)?;
+            }
+        }
+
+        // Sum all payouts
+        for cycle in 0..group.current_cycle {
+            let payout_key = StorageKeyBuilder::payout_record(group_id, cycle);
+            if let Some(payout_record) = env
+                .storage()
+                .persistent()
+                .get::<_, PayoutRecord>(&payout_key)
+            {
+                total_payouts = total_payouts
+                    .checked_add(payout_record.amount)
+                    .ok_or(StellarSaveError::Overflow)?;
+            }
+        }
+
+        // Calculate balance
+        let balance = total_contributions
+            .checked_sub(total_payouts)
+            .ok_or(StellarSaveError::Overflow)?;
+
+        Ok(balance)
+    }
+
     /// Gets all payout records for a group with pagination and sorting.
     ///
     /// This function retrieves the complete payout history for a specific group,
@@ -5900,7 +5956,90 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
         let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
         let result = client.try_get_total_paid_out(&999);
+        assert_eq!(result, Err(Ok(StellarSaveError::GroupNotFound)));
+    }
+
+    // Tests for get_group_balance function
+
+    #[test]
+    fn test_get_group_balance_no_activity() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+
+        let creator = Address::generate(&env);
+        let group_id = client.create_group(&creator, &100, &3600, &3);
+
+        let balance = client.get_group_balance(&group_id);
+        assert_eq!(balance, 0);
+    }
+
+    #[test]
+    fn test_get_group_balance_with_contributions_no_payouts() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+
+        let creator = Address::generate(&env);
+        let group_id = client.create_group(&creator, &100, &3600, &3);
+
+        // Add contributions for cycle 0
+        let total_key = StorageKeyBuilder::contribution_cycle_total(group_id, 0);
+        env.storage().persistent().set(&total_key, &300_i128);
+
+        let balance = client.get_group_balance(&group_id);
+        assert_eq!(balance, 300);
+    }
+
+    #[test]
+    fn test_get_group_balance_with_contributions_and_payouts() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+
+        let creator = Address::generate(&env);
+        let group_id = client.create_group(&creator, &100, &3600, &3);
+
+        let mut group: Group = env
+            .storage()
+            .persistent()
+            .get(&StorageKeyBuilder::group_data(group_id))
+            .unwrap();
+        group.current_cycle = 2;
+        env.storage()
+            .persistent()
+            .set(&StorageKeyBuilder::group_data(group_id), &group);
+
+        // Add contributions for cycles 0 and 1
+        env.storage()
+            .persistent()
+            .set(&StorageKeyBuilder::contribution_cycle_total(group_id, 0), &300_i128);
+        env.storage()
+            .persistent()
+            .set(&StorageKeyBuilder::contribution_cycle_total(group_id, 1), &300_i128);
+
+        // Add payout for cycle 0
+        let payout = PayoutRecord::new(creator.clone(), group_id, 0, 300, env.ledger().timestamp());
+        env.storage()
+            .persistent()
+            .set(&StorageKeyBuilder::payout_record(group_id, 0), &payout);
+
+        let balance = client.get_group_balance(&group_id);
+        assert_eq!(balance, 300); // 600 contributions - 300 payout
+    }
+
+    #[test]
+    fn test_get_group_balance_group_not_found() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        let result = client.try_get_group_balance(&999);
         assert_eq!(result, Err(Ok(StellarSaveError::GroupNotFound)));
     }
 
