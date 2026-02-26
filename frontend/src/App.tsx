@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Alert,
   Box,
@@ -15,8 +16,15 @@ import {
   type LayoutNavItem,
   type SelectOption,
 } from "./ui";
+import { SearchBar } from "./components";
+import { Dropdown } from "./components";
+import { Tabs, type Tab } from "./components";
+import { GroupCard, GroupCardSkeleton } from "./components";
 
 function App() {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  
   const {
     wallets,
     selectedWalletId,
@@ -31,6 +39,12 @@ function App() {
     switchWallet,
     switchAccount,
   } = useWallet();
+
+  const handleSearch = (value: string) => {
+    setSearchQuery(value);
+    setIsSearching(true);
+    setTimeout(() => setIsSearching(false), 500);
+  };
 
   const selectedWallet = wallets.find((wallet) => wallet.id === selectedWalletId);
   const canConnect = Boolean(selectedWallet?.installed) && status !== "connecting";
@@ -47,6 +61,55 @@ function App() {
     { key: "wallets", label: "Wallets" },
     { key: "activity", label: "Activity" },
   ];
+  
+  const demoTabs: Tab[] = [
+    {
+      id: "overview",
+      label: "Overview",
+      icon: "📊",
+      content: (
+        <Box>
+          <Typography variant="h6" gutterBottom>
+            Wallet Overview
+          </Typography>
+          <Typography color="text.secondary">
+            View your wallet connection status and manage your accounts.
+          </Typography>
+        </Box>
+      ),
+    },
+    {
+      id: "transactions",
+      label: "Transactions",
+      icon: "💸",
+      content: (
+        <Box>
+          <Typography variant="h6" gutterBottom>
+            Transaction History
+          </Typography>
+          <Typography color="text.secondary">
+            Your recent transactions will appear here once connected.
+          </Typography>
+        </Box>
+      ),
+    },
+    {
+      id: "settings",
+      label: "Settings",
+      icon: "⚙️",
+      content: (
+        <Box>
+          <Typography variant="h6" gutterBottom>
+            Wallet Settings
+          </Typography>
+          <Typography color="text.secondary">
+            Configure your wallet preferences and security options.
+          </Typography>
+        </Box>
+      ),
+    },
+  ];
+  
   const sidebar = (
     <AppCard>
       <Stack spacing={1.5}>
@@ -91,6 +154,23 @@ function App() {
             <Typography color="text.secondary" sx={{ mt: 0.75 }}>
               UI now uses a centralized MUI theme with reusable wrapper components.
             </Typography>
+          </Box>
+
+          <Box>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+              Search Demo
+            </Typography>
+            <SearchBar
+              placeholder="Search wallets or accounts..."
+              onSearch={handleSearch}
+              loading={isSearching}
+              debounceMs={300}
+            />
+            {searchQuery && (
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                Search query: {searchQuery}
+              </Typography>
+            )}
           </Box>
 
           <AppSelectField
@@ -143,9 +223,110 @@ function App() {
           {error ? <Alert severity="error">{error}</Alert> : null}
         </Stack>
       </AppCard>
+
+      <AppCard>
+        <Stack spacing={2}>
+          <Box>
+            <Typography variant="h2">Tabs Component Demo</Typography>
+            <Typography color="text.secondary" sx={{ mt: 0.75 }}>
+              Accessible tabs with keyboard navigation and multiple variants.
+            </Typography>
+          </Box>
+
+          <Box>
+            <Typography variant="subtitle2" gutterBottom>
+              Default Variant
+            </Typography>
+            <Tabs tabs={demoTabs} />
+          </Box>
+
+          <Divider />
+
+          <Box>
+            <Typography variant="subtitle2" gutterBottom>
+              Pills Variant
+            </Typography>
+            <Tabs tabs={demoTabs} variant="pills" />
+          </Box>
+
+          <Divider />
+
+          <Box>
+            <Typography variant="subtitle2" gutterBottom>
+              Underline Variant
+            </Typography>
+            <Tabs tabs={demoTabs} variant="underline" />
+          </Box>
+        </Stack>
+      </AppCard>
+
+      <AppCard>
+        <Stack spacing={2}>
+          <Box>
+            <Typography variant="h2">GroupCard Component Demo</Typography>
+            <Typography color="text.secondary" sx={{ mt: 0.75 }}>
+              Display group summaries with member count, contributions, and actions.
+            </Typography>
+          </Box>
+
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+              gap: 2,
+            }}
+          >
+            <GroupCard
+              groupName="Savings Circle Alpha"
+              memberCount={12}
+              contributionAmount={5000}
+              currency="XLM"
+              status="active"
+              onClick={() => console.log("Card clicked")}
+              onViewDetails={() => console.log("View details")}
+              onJoin={() => console.log("Join group")}
+            />
+            <GroupCard
+              groupName="Emergency Fund Group"
+              memberCount={8}
+              contributionAmount={3200}
+              currency="XLM"
+              status="pending"
+              onClick={() => console.log("Card clicked")}
+              onViewDetails={() => console.log("View details")}
+            />
+            <GroupCard
+              groupName="Monthly Savings Pool"
+              memberCount={25}
+              contributionAmount={12500}
+              currency="XLM"
+              status="completed"
+              onClick={() => console.log("Card clicked")}
+              onViewDetails={() => console.log("View details")}
+            />
+          </Box>
+
+          <Divider />
+
+          <Box>
+            <Typography variant="subtitle2" gutterBottom>
+              Loading State
+            </Typography>
+            <Box
+              sx={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+                gap: 2,
+              }}
+            >
+              <GroupCardSkeleton />
+              <GroupCardSkeleton />
+            </Box>
+          </Box>
+        </Stack>
+      </AppCard>
     </AppLayout>
   );
-}
 }
 
 export default App;
