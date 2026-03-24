@@ -30,6 +30,20 @@ pub enum StorageKey {
 
     /// Keys for various counters and metadata.
     Counter(CounterKey),
+
+    /// Keys for tracking individual user state across the contract.
+    User(UserKey),
+}
+
+/// Keys for individual user tracking across the entire contract.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+pub enum UserKey {
+    /// Tracks the last ledger timestamp a specific user created a group.
+    LastGroupCreation(Address),
+
+    /// Tracks the last ledger timestamp a specific user joined a group.
+    LastGroupJoin(Address),
 }
 
 /// Storage keys for group-related data.
@@ -292,6 +306,16 @@ impl StorageKeyBuilder {
     /// Creates a key for the global emergency pause flag.
     pub fn emergency_pause() -> StorageKey {
         StorageKey::Counter(CounterKey::EmergencyPause)
+    }
+
+    /// Creates a key storing the timestamp of a user's last group creation.
+    pub fn user_last_creation(user: Address) -> StorageKey {
+        StorageKey::User(UserKey::LastGroupCreation(user))
+    }
+
+    /// Creates a key storing the timestamp of a user's last group join action.
+    pub fn user_last_join(user: Address) -> StorageKey {
+        StorageKey::User(UserKey::LastGroupJoin(user))
     }
 }
 

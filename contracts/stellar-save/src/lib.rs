@@ -44,6 +44,10 @@ use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol, Ve
 pub use status::StatusError;
 pub use storage::{StorageKey, StorageKeyBuilder};
 
+// --- Cooldown Constants ---
+const GROUP_CREATION_COOLDOWN: u64 = 300; // 5 minutes
+const GROUP_JOIN_COOLDOWN: u64 = 120; // 2 minutes
+
 #[contract]
 pub struct StellarSaveContract;
 
@@ -453,6 +457,15 @@ impl StellarSaveContract {
     ) -> Result<u64, StellarSaveError> {
         Self::assert_not_paused(&env)?;
 
+        // [RATE LIMITING] Check rate limit for group creation
+        let creation_key = StorageKeyBuilder::user_last_creation(creator.clone());
+        let current_time = env.ledger().timestamp();
+        if let Some(last_creation) = env.storage().persistent().get::<_, u64>(&creation_key) {
+            if current_time < last_creation + GROUP_CREATION_COOLDOWN {
+                return Err(StellarSaveError::RateLimitExceeded);
+            }
+        }
+
         // 1. Authorization: Only the creator can initiate this transaction
         creator.require_auth();
 
@@ -504,7 +517,9 @@ impl StellarSaveContract {
         env.events()
             .publish((Symbol::new(&env, "GroupCreated"), creator), group_id);
 
-        // 7. Return Group ID
+        // 7. Update rate limit tracker and Return Group ID
+        env.storage().persistent().set(&creation_key, &current_time);
+        
         Ok(group_id)
     }
 
@@ -1877,6 +1892,15 @@ impl StellarSaveContract {
         // Verify caller authorization
         member.require_auth();
 
+        // [RATE LIMITING] Check rate limit for group joining
+        let join_key = StorageKeyBuilder::user_last_join(member.clone());
+        let current_time = env.ledger().timestamp();
+        if let Some(last_join) = env.storage().persistent().get::<_, u64>(&join_key) {
+            if current_time < last_join + GROUP_JOIN_COOLDOWN {
+                return Err(StellarSaveError::RateLimitExceeded);
+            }
+        }
+
         // Task 1: Verify group exists and is joinable
         let group_key = StorageKeyBuilder::group_data(group_id);
         let mut group: Group = env
@@ -1943,6 +1967,9 @@ impl StellarSaveContract {
         // Update group member count
         group.member_count += 1;
         env.storage().persistent().set(&group_key, &group);
+
+        // Update rate limit tracker
+        env.storage().persistent().set(&join_key, &current_time);
 
         // Emit event
         EventEmitter::emit_member_joined(&env, group_id, member, group.member_count, timestamp);
@@ -7989,5 +8016,75 @@ mod tests {
 
         // Operation should succeed
         client.create_group(&creator, &100, &3600, &5);
+    }
+
+    #[test]
+    fn test_group_creation_rate_limit() {
+        let env = Env::default();
+        let admin = Address::generate(&env);
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+
+        let config = ContractConfig {
+            admin: admin.clone(),
+            min_contribution: 10,
+            max_contribution: 1000,
+            min_members: 2,
+            max_members: 10,
+            min_cycle_duration: 3600,
+            max_cycle_duration: 86400,
+        };
+
+        env.mock_all_auths();
+        client.update_config(&config);
+
+        let creator = Address::generate(&env);
+
+        // First creation should succeed
+        client.create_group(&creator, &100, &3600, &5);
+
+        // Immediate second creation should fail due to cooldown
+        let result = client.try_create_group(&creator, &100, &3600, &5);
+        assert_eq!(result, Err(Ok(StellarSaveError::RateLimitExceeded)));
+        
+        // Different user should be able to create independent of the other user's cooldown
+        let creator2 = Address::generate(&env);
+        client.create_group(&creator2, &100, &3600, &5);
+    }
+
+    #[test]
+    fn test_group_join_rate_limit() {
+        let env = Env::default();
+        let admin = Address::generate(&env);
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+
+        let config = ContractConfig {
+            admin: admin.clone(),
+            min_contribution: 10,
+            max_contribution: 1000,
+            min_members: 2,
+            max_members: 10,
+            min_cycle_duration: 3600,
+            max_cycle_duration: 86400,
+        };
+
+        env.mock_all_auths();
+        client.update_config(&config);
+
+        let creator = Address::generate(&env);
+        let member = Address::generate(&env);
+
+        let group_id1 = client.create_group(&creator, &100, &3600, &5);
+        
+        let creator2 = Address::generate(&env);
+        let group_id2 = client.create_group(&creator2, &100, &3600, &5);
+
+        // First join should succeed
+        client.join_group(&group_id1, &member);
+
+        // Immediate second join to another group should fail
+        let result = client.try_join_group(&group_id2, &member);
+        assert_eq!(result, Err(Ok(StellarSaveError::RateLimitExceeded)));
     }
 }

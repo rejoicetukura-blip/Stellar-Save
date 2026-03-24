@@ -81,6 +81,10 @@ pub enum StellarSaveError {
     /// The contract operations are paused by an administrator.
     /// Error Code: 9004
     ContractPaused = 9004,
+
+    /// Rate limit exceeded for an operation. Please wait before trying again.
+    /// Error Code: 9005
+    RateLimitExceeded = 9005,
 }
 
 impl StellarSaveError {
@@ -149,6 +153,9 @@ impl StellarSaveError {
             }
             StellarSaveError::ContractPaused => {
                 "The contract is currently paused by an administrator. Please try again later."
+            }
+            StellarSaveError::RateLimitExceeded => {
+                "Rate limit exceeded. Please wait before trying again."
             }
         }
     }
@@ -230,6 +237,7 @@ mod tests {
         assert_eq!(StellarSaveError::DataCorruption.code(), 9002);
         assert_eq!(StellarSaveError::Overflow.code(), 9003);
         assert_eq!(StellarSaveError::ContractPaused.code(), 9004);
+        assert_eq!(StellarSaveError::RateLimitExceeded.code(), 9005);
     }
 
     #[test]
@@ -280,6 +288,10 @@ mod tests {
             StellarSaveError::ContractPaused.category(),
             ErrorCategory::System
         );
+        assert_eq!(
+            StellarSaveError::RateLimitExceeded.category(),
+            ErrorCategory::System
+        );
     }
 
     #[test]
@@ -302,6 +314,7 @@ mod tests {
             StellarSaveError::DataCorruption,
             StellarSaveError::Overflow,
             StellarSaveError::ContractPaused,
+            StellarSaveError::RateLimitExceeded,
         ];
 
         for error in &errors {
