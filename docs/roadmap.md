@@ -1,199 +1,130 @@
 # Stellar-Save Roadmap
 
-This document outlines the planned development milestones for Stellar-Save. Each version builds on the previous, progressively expanding functionality, usability, and reach.
+This document outlines the planned development milestones for Stellar-Save. Timelines are estimates and subject to change based on community feedback and contributor availability.
 
 ---
 
-## v1.0 — XLM-Only Groups (Current)
+## Table of Contents
 
-**Status:** ✅ In Progress
+- [v1.0 — Core (Current)](#v10--core-current)
+- [v1.1 — Custom Token Support](#v11--custom-token-support)
+- [v2.0 — Flexible Payouts & Penalties](#v20--flexible-payouts--penalties)
+- [v3.0 — Enhanced Frontend UI](#v30--enhanced-frontend-ui)
+- [v4.0 — Mobile App & Fiat On/Off-Ramps](#v40--mobile-app--fiat-onoff-ramps)
+- [Milestone Summary](#milestone-summary)
 
-The foundation of the protocol. This version establishes the core ROSCA mechanics on Stellar Soroban using native XLM only.
+---
 
-### Scope
+## v1.0 — Core (Current)
 
-- **Group Management**
-  - Create groups with configurable contribution amount, cycle duration, and max members
-  - Update group parameters while in `Pending` state
-  - Delete groups before activation
-  - List and paginate groups
+**Status:** In Progress  
+**Scope:** XLM-only rotational savings on Stellar testnet and mainnet
 
-- **Membership**
-  - Join and leave groups
-  - Assign payout positions (sequential or random)
-  - Track member profiles and contribution history
+### Features
+- Create savings groups with configurable contribution amount, cycle duration, and max members
+- Join groups via Group ID
+- Fixed XLM contributions per cycle
+- Automatic payout to the designated member when all contributions are received
+- Group lifecycle management: `Pending` → `Active` → `Completed`
+- On-chain event emission for group creation, contributions, and payouts
+- Basic frontend (React + Vite) with wallet connection via Freighter
+- Smart contract written in Rust using the Soroban SDK
 
-- **Contributions**
-  - Contribute fixed XLM amount per cycle
-  - Track contribution status per member per cycle
-  - Enforce contribution deadlines
-  - Detect missed contributions
-
-- **Payouts**
-  - Automatic payout execution when all members contribute
-  - Rotating recipient selection based on payout position
-  - Payout history and record tracking
-
-- **Security & Admin**
-  - Admin-controlled contract configuration
-  - Emergency pause / unpause
-  - Rate limiting for group creation and joining
-  - Reentrancy protection
-  - Signature verification utility (`verify_signature`)
-
-- **Contract Infrastructure**
-  - Comprehensive error types with categorization
-  - Event emission for all state changes
-  - Persistent storage with O(1) key lookups
-  - Full unit test coverage
+### Goals
+- Prove the core rotational savings model works reliably on-chain
+- Establish a clean, auditable contract codebase
+- Provide a minimal but functional UI for early adopters
 
 ---
 
 ## v1.1 — Custom Token Support
 
-**Status:** 🔜 Planned
+**Status:** Planned  
+**Scope:** Allow groups to use any Stellar asset (not just XLM)
 
-Expand beyond XLM to support any Stellar token, enabling stablecoin-based savings groups.
+### Features
+- Accept any SEP-41 compliant token as the contribution currency
+- Token selection during group creation
+- Display token symbol and balance in the UI
+- Validate token balances before allowing contributions
 
-### Scope
-
-- **Token Integration**
-  - Support for SEP-41 compliant Stellar tokens (USDC, EURC, etc.)
-  - Token allowlist — admin-approved tokens only
-  - Per-group token configuration set at creation time
-  - Token balance validation before contribution acceptance
-
-- **Multi-Token Groups**
-  - Groups denominated in a single token (not mixed)
-  - Token metadata display (symbol, decimals, issuer)
-  - Contribution amounts expressed in token units
-
-- **Frontend Updates**
-  - Token selector when creating a group
-  - Balance display in group's token denomination
-  - Token approval flow for non-XLM contributions
+### Goals
+- Open Stellar-Save to stablecoin-based savings groups (e.g. USDC on Stellar)
+- Reduce volatility risk for members who prefer stable assets
 
 ---
 
-## v2.0 — Flexible Payouts & Penalty Mechanisms
+## v2.0 — Flexible Payouts & Penalties
 
-**Status:** 🔜 Planned
+**Status:** Planned  
+**Scope:** Improve fairness and resilience when members miss contributions
 
-Introduce configurable payout schedules and financial accountability for missed contributions.
+### Features
+- Configurable penalty for missed contributions (e.g. small XLM fee)
+- Grace period before a missed contribution is penalised
+- Option for randomised or voted payout order (instead of join-order only)
+- Partial payout release if a member exits early (with creator approval)
+- On-chain dispute flag for unresolved contribution issues
 
-### Scope
-
-- **Flexible Payout Schedules**
-  - Configurable payout order: sequential, random, or bid-based
-  - Early payout requests with group consensus
-  - Partial cycle completion handling
-
-- **Penalty Mechanisms**
-  - Configurable late contribution penalty (percentage or flat fee)
-  - Grace period before penalty is applied
-  - Penalty pool distribution to other members
-  - Member removal after repeated missed contributions
-
-- **Dispute Resolution**
-  - On-chain voting for edge case decisions
-  - Majority-vote group actions (e.g. remove a member, pause a cycle)
-
-- **Enhanced Cycle Management**
-  - Cycle extension by group vote
-  - Mid-cycle member replacement (with group approval)
-  - Cycle history and audit trail
+### Goals
+- Make groups more resilient to non-participating members
+- Give group creators more control over payout fairness
+- Reduce the risk of a single member stalling the entire group
 
 ---
 
 ## v3.0 — Enhanced Frontend UI
 
-**Status:** 🔜 Planned
+**Status:** Planned  
+**Scope:** Significant UX improvements based on user feedback from v1.x
 
-A polished, production-ready web application with full wallet integration and real-time updates.
+### Features
+- Full mobile-responsive design
+- Push notifications (browser) for upcoming contribution deadlines
+- Group activity feed showing recent contributions and payouts
+- Member profile pages with contribution history
+- Dark mode support
+- Improved onboarding flow for first-time users
+- Internationalisation (i18n) support — starting with English, French, and Yoruba
 
-### Scope
-
-- **Dashboard**
-  - Personal savings overview (active groups, total contributed, upcoming payout)
-  - Group activity feed with real-time updates
-  - Contribution reminders and notifications
-
-- **Group Management UI**
-  - Full group creation wizard with validation
-  - Member management interface
-  - Payout schedule visualization (timeline view)
-  - Cycle progress indicators
-
-- **Wallet Integration**
-  - Freighter wallet connect / disconnect
-  - Multi-wallet support (Albedo, xBull)
-  - Transaction signing flow with confirmation dialogs
-  - Network switching (testnet / mainnet)
-
-- **Analytics**
-  - Personal savings history charts
-  - Group health metrics (contribution rate, on-time %)
-  - Payout projection calculator
-
-- **Accessibility & UX**
-  - Mobile-responsive design
-  - Dark / light mode
-  - Internationalization (i18n) support
-  - ARIA-compliant components
+### Goals
+- Lower the barrier to entry for non-technical users
+- Support communities in regions where Ajo/Esusu is culturally common
 
 ---
 
 ## v4.0 — Mobile App & Fiat On/Off-Ramps
 
-**Status:** 🔜 Planned
+**Status:** Future  
+**Scope:** Native mobile experience and fiat integration
 
-Bring Stellar-Save to mobile devices and bridge the gap between crypto and traditional finance.
+### Features
+- React Native mobile app (iOS and Android)
+- In-app wallet creation and management
+- Fiat on-ramp: buy XLM or stablecoins directly within the app
+- Fiat off-ramp: withdraw payout to local bank account via SEP-24/31
+- Biometric authentication (Face ID / fingerprint)
+- SMS/WhatsApp contribution reminders
 
-### Scope
-
-- **Mobile Application**
-  - React Native app for iOS and Android
-  - Biometric authentication (Face ID / fingerprint)
-  - Push notifications for contribution deadlines and payouts
-  - Offline-capable with sync on reconnect
-
-- **Fiat On/Off-Ramps**
-  - Integration with SEP-6 / SEP-24 anchors for fiat deposits and withdrawals
-  - Local currency display alongside token amounts
-  - Bank transfer and mobile money support (targeting African markets)
-
-- **Community Features**
-  - In-app group chat
-  - Invite members via link or QR code
-  - Group reputation scores based on contribution history
-
-- **Expanded Reach**
-  - USSD interface for feature phones (no smartphone required)
-  - Agent network for cash-in / cash-out in underserved areas
-  - Multi-language support (Yoruba, Igbo, Hausa, Swahili, French)
+### Goals
+- Reach users who don't have desktop access
+- Bridge the gap between crypto savings and traditional banking
+- Enable true financial inclusion for underbanked communities
 
 ---
 
 ## Milestone Summary
 
-| Version | Focus | Status |
+| Version | Scope | Status |
 |---------|-------|--------|
-| v1.0 | XLM-only ROSCA core | ✅ In Progress |
-| v1.1 | Custom token support | 🔜 Planned |
-| v2.0 | Flexible payouts & penalties | 🔜 Planned |
-| v3.0 | Enhanced frontend UI | 🔜 Planned |
-| v4.0 | Mobile app & fiat on/off-ramps | 🔜 Planned |
+| v1.0 | XLM-only core contract + basic UI | In Progress |
+| v1.1 | Custom token (SEP-41) support | Planned |
+| v2.0 | Flexible payouts, penalties, payout order options | Planned |
+| v3.0 | Enhanced UI, mobile-responsive, notifications, i18n | Planned |
+| v4.0 | Mobile app, fiat on/off-ramps | Future |
 
 ---
 
 ## Contributing to the Roadmap
 
-Have a feature idea or want to work on a planned milestone? 
-
-- Open a [GitHub Issue](https://github.com/Xoulomon/Stellar-Save/issues) to propose or discuss features
-- Check issues labeled `wave-ready` to find funded contribution opportunities
-- See [CONTRIBUTING.md](../CONTRIBUTING.md) for how to get started
-
----
-
-**Built with ❤️ for financial inclusion on Stellar**
+Have a feature idea or want to reprioritise something? Open a [GitHub Discussion](https://github.com/Xoulomon/Stellar-Save/discussions) or comment on an existing [issue](https://github.com/Xoulomon/Stellar-Save/issues). Community input directly shapes what gets built next.
