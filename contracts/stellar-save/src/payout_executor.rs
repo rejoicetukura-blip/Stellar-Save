@@ -682,6 +682,17 @@ fn advance_cycle_or_complete(
 /// Validates Requirements 9.1, 9.2, 9.3, 9.4, 9.5, 10.6, 10.7, and orchestrates all
 /// other requirements through helper functions.
 pub fn execute_payout(env: Env, group_id: u64) -> Result<(), StellarSaveError> {
+    // Reentrancy protection - prevent recursive payout calls
+    let reentrancy_key = StorageKeyBuilder::reentrancy_guard();
+    let guard_value: u64 = env.storage().persistent().get(&reentrancy_key).unwrap_or(0);
+    
+    if guard_value != 0 {
+        return Err(StellarSaveError::InternalError);
+    }
+    
+    // Set reentrancy protection flag
+    env.storage().persistent().set(&reentrancy_key, &1);
+
     // Step 1: Load group from storage
     let group_key = StorageKeyBuilder::group_data(group_id);
     let mut group: Group = env
@@ -742,6 +753,10 @@ pub fn execute_payout(env: Env, group_id: u64) -> Result<(), StellarSaveError> {
     
     // Step 13: Advance to the next cycle or mark group as complete
     advance_cycle_or_complete(&env, &mut group)?;
+    
+    // Clear reentrancy protection flag
+    let reentrancy_key = StorageKeyBuilder::reentrancy_guard();
+    env.storage().persistent().set(&reentrancy_key, &0);
     
     // Payout execution completed successfully
     Ok(())
