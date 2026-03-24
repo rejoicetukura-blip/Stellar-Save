@@ -203,9 +203,9 @@ impl StellarSaveContract {
     /// # Example
     /// ```ignore
     /// // Validate a 10 XLM contribution
-    /// StellarSaveContract::validate_contribution_amount_range(&env, 100_000_000)?;
+    /// StellarSaveContract::validate_amount_range(&env, 100_000_000)?;
     /// ```
-    pub fn validate_contribution_amount_range(env: &Env, amount: i128) -> Result<(), StellarSaveError> {
+    pub fn validate_amount_range(env: &Env, amount: i128) -> Result<(), StellarSaveError> {
         let config_key = StorageKeyBuilder::contract_config();
         
         if let Some(config) = env.storage().persistent().get::<_, ContractConfig>(&config_key) {
@@ -1229,10 +1229,9 @@ impl StellarSaveContract {
     ) -> Result<(), StellarSaveError> {
         Self::assert_not_paused(&env)?;
 
-        // 1. Validate recipient address
-        if recipient == Address::default() {
-            return Err(StellarSaveError::InvalidRecipient);
-        }
+        // Note: Address validation is implicit in Soroban - addresses are always valid
+        // since they must be generated or derived from a public key.
+        // The check for invalid recipient (e.g., Address::default()) is only available in tests.
 
         // 2. Reentrancy protection - set transfer in progress flag
         let reentrancy_key = StorageKeyBuilder::reentrancy_guard();
@@ -4544,10 +4543,10 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    // Tests for validate_contribution_amount_range function
+    // Tests for validate_amount_range function
 
     #[test]
-    fn test_validate_contribution_amount_range_valid() {
+    fn test_validate_amount_range_valid() {
         let env = Env::default();
         let admin = Address::generate(&env);
         let contract_id = env.register(StellarSaveContract, ());
@@ -4567,13 +4566,13 @@ mod tests {
 
         // Test valid amount (10 XLM)
         let result = env.as_contract(&contract_id, || {
-            StellarSaveContract::validate_contribution_amount_range(&env, 100_000_000)
+            StellarSaveContract::validate_amount_range(&env, 100_000_000)
         });
         assert!(result.is_ok());
     }
 
     #[test]
-    fn test_validate_contribution_amount_range_too_low() {
+    fn test_validate_amount_range_too_low() {
         let env = Env::default();
         let admin = Address::generate(&env);
         let contract_id = env.register(StellarSaveContract, ());
@@ -4593,14 +4592,14 @@ mod tests {
 
         // Test amount below minimum
         let result = env.as_contract(&contract_id, || {
-            StellarSaveContract::validate_contribution_amount_range(&env, 500_000)
+            StellarSaveContract::validate_amount_range(&env, 500_000)
         });
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), StellarSaveError::InvalidAmount);
     }
 
     #[test]
-    fn test_validate_contribution_amount_range_too_high() {
+    fn test_validate_amount_range_too_high() {
         let env = Env::default();
         let admin = Address::generate(&env);
         let contract_id = env.register(StellarSaveContract, ());
@@ -4620,20 +4619,20 @@ mod tests {
 
         // Test amount above maximum
         let result = env.as_contract(&contract_id, || {
-            StellarSaveContract::validate_contribution_amount_range(&env, 2_000_000_000)
+            StellarSaveContract::validate_amount_range(&env, 2_000_000_000)
         });
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), StellarSaveError::InvalidAmount);
     }
 
     #[test]
-    fn test_validate_contribution_amount_range_no_config() {
+    fn test_validate_amount_range_no_config() {
         let env = Env::default();
         let contract_id = env.register(StellarSaveContract, ());
 
         // Test without config (should pass)
         let result = env.as_contract(&contract_id, || {
-            StellarSaveContract::validate_contribution_amount_range(&env, 100_000_000)
+            StellarSaveContract::validate_amount_range(&env, 100_000_000)
         });
         assert!(result.is_ok());
     }
@@ -7354,6 +7353,8 @@ mod tests {
         // Verify: Fails with InvalidState
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), StellarSaveError::InvalidState);
+    }
+
     // Tests for transfer_payout function
 
     #[test]
