@@ -265,6 +265,17 @@ impl StellarSaveContract {
     ) -> Result<(), StellarSaveError> {
         Self::assert_not_paused(env)?;
 
+        // Reentrancy protection - prevent recursive calls during contribution processing
+        let reentrancy_key = StorageKeyBuilder::reentrancy_guard();
+        let guard_value: u64 = env.storage().persistent().get(&reentrancy_key).unwrap_or(0);
+        
+        if guard_value != 0 {
+            return Err(StellarSaveError::InternalError);
+        }
+        
+        // Set reentrancy protection flag
+        env.storage().persistent().set(&reentrancy_key, &1);
+
         // 1. Check if member has already contributed in this cycle
         let contrib_key = StorageKeyBuilder::contribution_individual(
             group_id,
@@ -319,6 +330,10 @@ impl StellarSaveContract {
         let member_current: i128 = env.storage().persistent().get(&member_total_key).unwrap_or(0);
         let member_new = member_current.checked_add(amount).ok_or(StellarSaveError::Overflow)?;
         env.storage().persistent().set(&member_total_key, &member_new);
+
+        // Clear reentrancy protection flag
+        let reentrancy_key = StorageKeyBuilder::reentrancy_guard();
+        env.storage().persistent().set(&reentrancy_key, &0);
 
         Ok(())
     }
@@ -5284,6 +5299,37 @@ mod tests {
         assert_eq!(total, amount);
     }
 
+    #[test]
+    fn test_record_contribution_reentrancy_protection() {
+        let env = Env::default();
+        let contract_id = env.register(StellarSaveContract, ());
+
+        let member = Address::generate(&env);
+        let group_id = 1;
+        let cycle = 0;
+        let amount = 100_000i128;
+        let timestamp = 12345u64;
+
+        // Manually set reentrancy guard to simulate active operation
+        let reentrancy_key = StorageKeyBuilder::reentrancy_guard();
+        env.storage().persistent().set(&reentrancy_key, &1);
+
+        // Action: Try to record contribution while guard is active
+        let result = env.as_contract(&contract_id, || {
+            StellarSaveContract::record_contribution(
+                &env,
+                group_id,
+                cycle,
+                member.clone(),
+                amount,
+                timestamp,
+            )
+        });
+
+        // Verify: Should fail with InternalError due to reentrancy guard
+        assert_eq!(result, Err(StellarSaveError::InternalError));
+    }
+
     // Tests for get_contribution_deadline function
 
     #[test]
@@ -8251,5 +8297,4 @@ mod tests {
         // Without calling mock_all_auths(), this should panic due to require_auth
         let _ = client.verify_signature(&address);
     }
-}
 }
