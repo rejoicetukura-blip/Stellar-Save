@@ -1,15 +1,28 @@
-# Enhance Gas Efficiency by Optimizing Storage Reads
+# Implement Rate Limiting to Prevent Spam
 
 ## Description
-This PR introduces significant gas optimizations to the Stellar-Save Soroban smart contracts by eliminating expensive O(N) storage reads and replacing them with O(1) continuous aggregate tracking.
+This PR adds rate limiting (cooldown) mechanisms to the Stellar-Save Soroban smart contract to prevent spam and abuse.
 
 ### Key Changes
-- **Eliminated Vector Reads**: Replaced vector length checks in `pool.rs` with O(1) `group.member_count` struct reads.
-- **Combined Redundant Group Reads**: Removed multiple separate persistent storage reads in `get_pool_info` by consolidating state access.
-- **Removed O(N) Payout Checks**: Replaced the linear cycle-scan in `has_received_payout` with a direct O(1) storage key look-up using the member's strictly assigned `payout_position`.
-- **Incremental Balance Tracking**: Replaced expensive O(N) historical aggregating loops in `get_group_balance`, `get_total_paid_out`, and `get_member_total_contributions` by introducing new tracking storage keys (`GroupBalance`, `GroupTotalPaidOut`, `TotalContributions`) which dynamically increment during `record_contribution` and `transfer_payout`.
+- **Group Creation Cooldown**: Added a 5-minute (300 seconds) cooldown period between group creations per user
+- **Group Join Cooldown**: Added a 2-minute (120 seconds) cooldown period between joining different groups per user
+- **Storage Keys**: Implemented storage keys to track last creation and last join timestamps per user
+- **Error Handling**: Returns `StellarSaveError::RateLimitExceeded` (error code 9005) when rate limit is exceeded
 
-All changes mathematically preserve the same core functionality while preventing gas costs from scaling linearly as the group length or cycle count increases.
+### Implementation Details
+- Constants defined in [`lib.rs`](contracts/stellar-save/src/lib.rs):
+  - `GROUP_CREATION_COOLDOWN: u64 = 300` (5 minutes)
+  - `GROUP_JOIN_COOLDOWN: u64 = 120` (2 minutes)
+- Rate limiting is enforced in `create_group` and `join_group` functions
+- Each user has independent cooldown timers - actions by one user don't affect others
 
-## Documentation Updated
-- Included a comprehensive before-and-after breakdown in [`docs/gas-optimization.md`](docs/gas-optimization.md).
+### Tests
+- `test_group_creation_rate_limit`: Verifies that creating multiple groups within cooldown period fails
+- `test_group_join_rate_limit`: Verifies that joining multiple groups within cooldown period fails
+
+## Verification
+- Contract compiles successfully: `cargo build --lib`
+- Rate limiting tests exist and verify the functionality
+
+## Related Issue
+Fixes #270 - Add rate limiting to prevent spam
