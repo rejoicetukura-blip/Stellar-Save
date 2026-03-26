@@ -1,14 +1,9 @@
-# Stellar-Save Issue #364: Create calculateCycleProgress utility
+# Stellar-Save TODO
 
-## Progress Tracker
-- [x] 1. Checkout `blackboxai/issue-364-cycle-progress` ✅
-- [x] 2. Create `utils/cycleProgress.ts` ✅
-- [x] 3. Create `utils/index.ts` ✅
-- [x] 4. Refactor `CycleProgress.tsx` ✅
-- [x] 5. Add `test/cycleProgress.test.ts` ✅
-- [ ] 6. Commit changes
-- [ ] 7. Push branch
-- [ ] 8. Create PR
+## Active Task: #336 Create formatDate utility [COMPLETED]
 
-**Code complete!** Ready for commit/push/PR.
-
+### Steps:
+- [x] 1. Create new git branch blackboxai-336-formatDate
+- [x] 2. Create frontend/src/utils/formatDate.ts
+- [x] 3. Update frontend/src/utils/index.ts to export formatDate
+- [x] 4. Update frontend/src/test/utils.test
