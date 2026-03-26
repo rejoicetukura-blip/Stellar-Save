@@ -3,10 +3,10 @@
  * TODO: replace stubs with actual Soroban contract invocations.
  */
 
-import type { PublicGroup, GroupFilters } from '../types/group';
+import type { GroupDetail, PublicGroup, GroupFilters } from '../types/group';
 
 // Re-export so existing imports keep working
-export type { PublicGroup };
+export type { PublicGroup, GroupDetail };
 
 export interface GroupData {
   name: string;

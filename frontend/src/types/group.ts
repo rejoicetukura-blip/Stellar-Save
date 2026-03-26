@@ -47,6 +47,40 @@ export const DEFAULT_GROUP_FILTERS: GroupFilters = {
   sort: 'date-desc',
 };
 
+// ─── Single Group (detail view) ───────────────────────────────────────────────
+
+export interface GroupDetail extends PublicGroup {
+  /** Address of the group creator */
+  creator: string;
+  /** Cycle duration in seconds */
+  cycleDuration: number;
+  /** Maximum number of members */
+  maxMembers: number;
+  /** Minimum members required to activate */
+  minMembers: number;
+  /** Current cycle index (0-based) */
+  currentCycle: number;
+  /** Whether the group is currently active */
+  isActive: boolean;
+  /** Whether the first cycle has been started */
+  started: boolean;
+  /** Timestamp when the group was activated (0 if not started) */
+  startedAt: Date | null;
+}
+
+// ─── useGroup return type ─────────────────────────────────────────────────────
+
+export interface UseGroupReturn {
+  /** Full group detail, null while loading or on error */
+  group: GroupDetail | null;
+  /** True during the initial fetch or a manual refresh */
+  isLoading: boolean;
+  /** Error message, null when no error */
+  error: string | null;
+  /** Manually re-fetch (busts cache) */
+  refresh: () => void;
+}
+
 // ─── Hook return type ─────────────────────────────────────────────────────────
 
 export interface UseGroupsReturn {
