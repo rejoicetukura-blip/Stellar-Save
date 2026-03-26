@@ -1,0 +1,44 @@
+coverage:
+  precision: 2
+  round: down
+  range: "70...100"
+
+  status:
+    project:
+      default:
+        target: 95%
+        threshold: 1%
+        if_not_found: success
+        if_ci_failed: error
+
+    patch:
+      default:
+        target: 95%
+        threshold: 2%
+        if_not_found: success
+        if_ci_failed: error
+
+  flags:
+    frontend:
+      paths:
+        - frontend/src/
+      carryforward: false
+
+    contracts:
+      paths:
+        - contracts/stellar-save/src/
+      carryforward: false
+
+comment:
+  layout: "reach,diff,flags,files"
+  behavior: default
+  require_changes: false
+  require_base: false
+  require_head: true
+
+ignore:
+  - "frontend/src/test/**"
+  - "frontend/src/**/*.example.tsx"
+  - "frontend/src/main.tsx"
+  - "frontend/src/components/*Demo.tsx"
+  - "contracts/stellar-save/test_snapshots/**"
