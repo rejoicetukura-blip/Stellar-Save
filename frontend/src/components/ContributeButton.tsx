@@ -1,9 +1,9 @@
-import React, { useState } from 'react'
-import { TransactionStatus, ContributeButtonProps } from '../types/contribution'
+import { useState } from 'react'
+import type { TransactionStatus, ContributeButtonProps } from '../types/contribution'
 
 // ── Status helpers ──────────────────────────────────────────────────────────
 
-const STATUS_CONFIG: Record
+const STATUS_CONFIG: Record<
   TransactionStatus,
   { label: string; icon: React.ReactNode; className: string }
 > = {
@@ -153,7 +153,7 @@ function StatusBanner({ status, txHash, errorMessage, onDismiss }: StatusBannerP
       <div>
         <p className={`text-sm font-medium ${banner.text}`}>{banner.msg}</p>
         {txHash && status === 'success' && (
-          
+          <a
             href={`https://stellar.expert/explorer/testnet/tx/${txHash}`}
             target="_blank"
             rel="noopener noreferrer"

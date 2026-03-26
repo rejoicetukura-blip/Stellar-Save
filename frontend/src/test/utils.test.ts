@@ -73,4 +73,5 @@ describe('Utils', () => {
       expect(msg).toBe('Transaction cancelled. This is safe.');
     });
   });
+});
 

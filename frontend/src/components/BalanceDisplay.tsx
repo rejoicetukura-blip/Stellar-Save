@@ -104,7 +104,7 @@ export function BalanceDisplay({
 
       {isLoading && !xlmBalance ? (
         <div className="balance-display__loading">
-          <Spinner size="medium" />
+          <Spinner size="md" />
           <p>Loading balance...</p>
         </div>
       ) : (
