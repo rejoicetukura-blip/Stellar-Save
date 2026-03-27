@@ -1,4 +1,6 @@
 export { Avatar } from "./Avatar";
+export { BalanceDisplay } from "./BalanceDisplay";
+export type { BalanceDisplayProps } from "./BalanceDisplay";
 export { Badge } from "./Badge";
 export { GroupBadge } from "./GroupBadge";
 export type { GroupBadgeStatus } from "./GroupBadge";
