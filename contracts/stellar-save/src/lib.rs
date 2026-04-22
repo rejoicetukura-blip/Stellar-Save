@@ -28,6 +28,7 @@ pub mod payout_executor;
 pub mod pool;
 pub mod status;
 pub mod storage;
+pub mod templates;
 
 // Re-export for convenience
 pub use contribution::ContributionRecord;
@@ -38,6 +39,7 @@ pub use events::*;
 pub use group::{Group, GroupStatus};
 pub use payout::PayoutRecord;
 pub use pool::{PoolCalculator, PoolInfo};
+pub use templates::{GroupTemplate, get_template};
 #[cfg(test)]
 use soroban_sdk::testutils::{Events, Ledger};
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol, Vec};
@@ -443,6 +445,54 @@ impl StellarSaveContract {
             .publish((Symbol::new(&env, "GroupCreated"), creator), group_id);
 
         // 7. Return Group ID
+        Ok(group_id)
+    }
+
+    /// Returns all available predefined group templates.
+    pub fn list_templates(env: Env) -> Vec<GroupTemplate> {
+        templates::list_templates(&env)
+    }
+
+    /// Creates a new group from a predefined template.
+    ///
+    /// The template supplies `cycle_duration` and `max_members`; the caller only
+    /// provides the `contribution_amount`.
+    ///
+    /// # Arguments
+    /// * `creator` - Address of the group creator (must sign)
+    /// * `template_id` - ID of the predefined template (1–5)
+    /// * `contribution_amount` - Amount in stroops each member pays per cycle
+    pub fn create_group_from_template(
+        env: Env,
+        creator: Address,
+        template_id: u32,
+        contribution_amount: i128,
+    ) -> Result<u64, StellarSaveError> {
+        creator.require_auth();
+
+        let group_id = Self::generate_next_group_id(&env)?;
+        let created_at = env.ledger().timestamp();
+
+        let group = templates::create_group_from_template(
+            &env,
+            template_id,
+            group_id,
+            creator.clone(),
+            contribution_amount,
+            created_at,
+        )?;
+
+        let group_key = StorageKeyBuilder::group_data(group_id);
+        env.storage().persistent().set(&group_key, &group);
+
+        let status_key = StorageKeyBuilder::group_status(group_id);
+        env.storage()
+            .persistent()
+            .set(&status_key, &GroupStatus::Pending);
+
+        env.events()
+            .publish((Symbol::new(&env, "GroupCreated"), creator), group_id);
+
         Ok(group_id)
     }
 

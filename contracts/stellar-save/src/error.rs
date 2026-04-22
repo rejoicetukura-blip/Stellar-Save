@@ -77,6 +77,11 @@ pub enum StellarSaveError {
     /// Added for ID Generation: The counter has reached its maximum limit.
     /// Error Code: 9003
     Overflow = 9003,
+
+    // Template-related errors (5000-5999)
+    /// The specified template ID does not exist.
+    /// Error Code: 5001
+    TemplateNotFound = 5001,
 }
 
 impl StellarSaveError {
@@ -143,6 +148,9 @@ impl StellarSaveError {
             StellarSaveError::Overflow => {
                 "The ID counter has reached its maximum limit. No more IDs can be generated."
             }
+            StellarSaveError::TemplateNotFound => {
+                "The specified template does not exist. Please verify the template ID."
+            }
         }
     }
 
@@ -161,6 +169,7 @@ impl StellarSaveError {
             2000..=2999 => ErrorCategory::Member,
             3000..=3999 => ErrorCategory::Contribution,
             4000..=4999 => ErrorCategory::Payout,
+            5000..=5999 => ErrorCategory::Template,
             9000..=9999 => ErrorCategory::System,
             _ => ErrorCategory::Unknown,
         }
@@ -182,6 +191,9 @@ pub enum ErrorCategory {
 
     /// Errors related to payout operations.
     Payout,
+
+    /// Errors related to group template operations.
+    Template,
 
     /// System-level errors and internal failures.
     System,
