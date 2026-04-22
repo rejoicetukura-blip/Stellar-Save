@@ -2711,7 +2711,94 @@ pub fn is_member(
 
         Ok(())
     }
-}
+
+    /// Applies a penalty to a member who missed a contribution in the given cycle.
+    ///
+    /// The penalty amount is accumulated in the member's penalty total and added
+    /// to the group pool for the current cycle so the payout recipient receives it.
+    ///
+    /// # Arguments
+    /// * `env` - Soroban environment
+    /// * `group_id` - ID of the group
+    /// * `member` - Address of the member to penalize
+    /// * `cycle_number` - The cycle in which the contribution was missed
+    ///
+    /// # Returns
+    /// * `Ok(i128)` - The penalty amount applied (0 if penalties disabled)
+    /// * `Err(StellarSaveError)` - If group not found or arithmetic overflow
+    fn apply_penalty(
+        env: &Env,
+        group_id: u64,
+        member: Address,
+        cycle_number: u32,
+    ) -> Result<i128, StellarSaveError> {
+        let group_key = StorageKeyBuilder::group_data(group_id);
+        let group = env
+            .storage()
+            .persistent()
+            .get::<_, Group>(&group_key)
+            .ok_or(StellarSaveError::GroupNotFound)?;
+
+        if !group.penalty_enabled || group.penalty_amount <= 0 {
+            return Ok(0);
+        }
+
+        let penalty = group.penalty_amount;
+
+        // Accumulate penalty total for this member
+        let penalty_key = StorageKeyBuilder::member_penalty_total(group_id, member.clone());
+        let current_total: i128 = env.storage().persistent().get(&penalty_key).unwrap_or(0);
+        let new_total = current_total
+            .checked_add(penalty)
+            .ok_or(StellarSaveError::Overflow)?;
+        env.storage().persistent().set(&penalty_key, &new_total);
+
+        // Add penalty to the cycle pool total so the payout recipient benefits
+        let pool_key = StorageKeyBuilder::contribution_cycle_total(group_id, cycle_number);
+        let current_pool: i128 = env.storage().persistent().get(&pool_key).unwrap_or(0);
+        let new_pool = current_pool
+            .checked_add(penalty)
+            .ok_or(StellarSaveError::Overflow)?;
+        env.storage().persistent().set(&pool_key, &new_pool);
+
+        let timestamp = env.ledger().timestamp();
+        EventEmitter::emit_penalty_applied(env, group_id, member, penalty, cycle_number, timestamp);
+
+        Ok(penalty)
+    }
+
+    /// Returns the total penalties accumulated by a member in a group.
+    ///
+    /// # Arguments
+    /// * `env` - Soroban environment
+    /// * `group_id` - ID of the group
+    /// * `member` - Address of the member
+    ///
+    /// # Returns
+    /// * `Ok(i128)` - Total penalty amount in stroops (0 if none)
+    /// * `Err(StellarSaveError::GroupNotFound)` - If group doesn't exist
+    /// * `Err(StellarSaveError::NotMember)` - If address is not a member
+    pub fn get_member_penalties(
+        env: Env,
+        group_id: u64,
+        member: Address,
+    ) -> Result<i128, StellarSaveError> {
+        // Verify group exists
+        let group_key = StorageKeyBuilder::group_data(group_id);
+        env.storage()
+            .persistent()
+            .get::<_, Group>(&group_key)
+            .ok_or(StellarSaveError::GroupNotFound)?;
+
+        // Verify member belongs to the group
+        let member_key = StorageKeyBuilder::member_profile(group_id, member.clone());
+        if !env.storage().persistent().has(&member_key) {
+            return Err(StellarSaveError::NotMember);
+        }
+
+        let penalty_key = StorageKeyBuilder::member_penalty_total(group_id, member);
+        Ok(env.storage().persistent().get(&penalty_key).unwrap_or(0))
+    }
 
 fn emit_group_activated(env: &Env, group_id: u64, timestamp: u64, member_count: u32) {
     env.events().publish(
@@ -8864,5 +8951,183 @@ mod tests {
         assert_eq!(GroupStatus::from_u32(3), Some(GroupStatus::Completed));
         assert_eq!(GroupStatus::from_u32(4), Some(GroupStatus::Cancelled));
         assert_eq!(GroupStatus::from_u32(5), None);
+    }
+
+    // =========================================================================
+    // Penalty system tests
+    // =========================================================================
+
+    fn setup_group_with_penalty(env: &Env, penalty_enabled: bool, penalty_amount: i128) -> (u64, Address, Address) {
+        let contract_id = env.register(StellarSaveContract, ());
+        let _ = StellarSaveContractClient::new(env, &contract_id);
+        let creator = Address::generate(env);
+        let member = Address::generate(env);
+        let group_id = 1u64;
+
+        let group = Group::new_with_penalty(
+            group_id,
+            creator.clone(),
+            10_000_000, // 1 XLM contribution
+            604800,     // 1 week cycle
+            3,
+            2,
+            1_000_000,
+            penalty_enabled,
+            penalty_amount,
+        );
+        env.storage()
+            .persistent()
+            .set(&StorageKeyBuilder::group_data(group_id), &group);
+
+        // Store member profile
+        let profile = MemberProfile {
+            address: member.clone(),
+            group_id,
+            payout_position: 0,
+            joined_at: 1_000_000,
+        };
+        env.storage()
+            .persistent()
+            .set(&StorageKeyBuilder::member_profile(group_id, member.clone()), &profile);
+
+        (group_id, creator, member)
+    }
+
+    #[test]
+    fn test_apply_penalty_accumulates_total() {
+        let env = Env::default();
+        let (group_id, _creator, member) = setup_group_with_penalty(&env, true, 500_000);
+
+        // Apply penalty for cycle 0
+        let result = StellarSaveContract::apply_penalty(&env, group_id, member.clone(), 0);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 500_000);
+
+        // Penalty total should be 500_000
+        let penalty_key = StorageKeyBuilder::member_penalty_total(group_id, member.clone());
+        let total: i128 = env.storage().persistent().get(&penalty_key).unwrap_or(0);
+        assert_eq!(total, 500_000);
+
+        // Apply again for cycle 1 — total should double
+        let _ = StellarSaveContract::apply_penalty(&env, group_id, member.clone(), 1);
+        let total2: i128 = env.storage().persistent().get(&penalty_key).unwrap_or(0);
+        assert_eq!(total2, 1_000_000);
+    }
+
+    #[test]
+    fn test_apply_penalty_adds_to_pool() {
+        let env = Env::default();
+        let (group_id, _creator, member) = setup_group_with_penalty(&env, true, 500_000);
+
+        // Seed the pool with some existing contributions
+        let pool_key = StorageKeyBuilder::contribution_cycle_total(group_id, 0);
+        env.storage().persistent().set(&pool_key, &10_000_000i128);
+
+        let _ = StellarSaveContract::apply_penalty(&env, group_id, member, 0);
+
+        let pool: i128 = env.storage().persistent().get(&pool_key).unwrap_or(0);
+        assert_eq!(pool, 10_500_000); // 10_000_000 + 500_000 penalty
+    }
+
+    #[test]
+    fn test_apply_penalty_disabled_returns_zero() {
+        let env = Env::default();
+        let (group_id, _creator, member) = setup_group_with_penalty(&env, false, 500_000);
+
+        let result = StellarSaveContract::apply_penalty(&env, group_id, member, 0);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    #[test]
+    fn test_apply_penalty_zero_amount_returns_zero() {
+        let env = Env::default();
+        let (group_id, _creator, member) = setup_group_with_penalty(&env, true, 0);
+
+        let result = StellarSaveContract::apply_penalty(&env, group_id, member, 0);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    #[test]
+    fn test_get_member_penalties_zero_when_none() {
+        let env = Env::default();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        let (group_id, _creator, member) = setup_group_with_penalty(&env, true, 500_000);
+
+        let total = client.get_member_penalties(&group_id, &member);
+        assert_eq!(total, 0);
+    }
+
+    #[test]
+    fn test_get_member_penalties_after_penalty_applied() {
+        let env = Env::default();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        let (group_id, _creator, member) = setup_group_with_penalty(&env, true, 500_000);
+
+        // Manually write penalty total to storage
+        let penalty_key = StorageKeyBuilder::member_penalty_total(group_id, member.clone());
+        env.storage().persistent().set(&penalty_key, &1_500_000i128);
+
+        let total = client.get_member_penalties(&group_id, &member);
+        assert_eq!(total, 1_500_000);
+    }
+
+    #[test]
+    #[should_panic(expected = "Status(ContractError(1001))")]
+    fn test_get_member_penalties_group_not_found() {
+        let env = Env::default();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        let member = Address::generate(&env);
+
+        client.get_member_penalties(&999u64, &member);
+    }
+
+    #[test]
+    #[should_panic(expected = "Status(ContractError(2002))")]
+    fn test_get_member_penalties_not_member() {
+        let env = Env::default();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        let (group_id, _creator, _member) = setup_group_with_penalty(&env, true, 500_000);
+        let stranger = Address::generate(&env);
+
+        client.get_member_penalties(&group_id, &stranger);
+    }
+
+    #[test]
+    fn test_group_new_with_penalty_fields() {
+        let env = Env::default();
+        let creator = Address::generate(&env);
+
+        let group = Group::new_with_penalty(
+            1, creator, 10_000_000, 604800, 5, 2, 1_000_000, true, 500_000,
+        );
+
+        assert!(group.penalty_enabled);
+        assert_eq!(group.penalty_amount, 500_000);
+    }
+
+    #[test]
+    fn test_group_new_defaults_penalty_disabled() {
+        let env = Env::default();
+        let creator = Address::generate(&env);
+
+        let group = Group::new(1, creator, 10_000_000, 604800, 5, 2, 1_000_000);
+
+        assert!(!group.penalty_enabled);
+        assert_eq!(group.penalty_amount, 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "penalty_amount must be greater than 0 when penalty is enabled")]
+    fn test_group_new_with_penalty_enabled_zero_amount_panics() {
+        let env = Env::default();
+        let creator = Address::generate(&env);
+
+        Group::new_with_penalty(1, creator, 10_000_000, 604800, 5, 2, 1_000_000, true, 0);
     }
 }

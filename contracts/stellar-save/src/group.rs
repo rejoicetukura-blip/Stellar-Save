@@ -191,6 +191,15 @@ pub struct Group {
     /// Used for tracking when the first cycle started.
     /// Only set when started is true.
     pub started_at: u64,
+
+    /// Whether the penalty system is enabled for this group.
+    /// When true, members who miss a contribution cycle are charged a penalty.
+    pub penalty_enabled: bool,
+
+    /// Penalty amount in stroops charged to members who miss a contribution.
+    /// This amount is added to the pool for the next payout recipient.
+    /// Must be > 0 when penalty_enabled is true.
+    pub penalty_amount: i128,
 }
 
 impl Group {
@@ -221,6 +230,31 @@ impl Group {
         min_members: u32,
         created_at: u64,
     ) -> Self {
+        Self::new_with_penalty(
+            id,
+            creator,
+            contribution_amount,
+            cycle_duration,
+            max_members,
+            min_members,
+            created_at,
+            false,
+            0,
+        )
+    }
+
+    /// Creates a new Group with penalty configuration.
+    pub fn new_with_penalty(
+        id: u64,
+        creator: Address,
+        contribution_amount: i128,
+        cycle_duration: u64,
+        max_members: u32,
+        min_members: u32,
+        created_at: u64,
+        penalty_enabled: bool,
+        penalty_amount: i128,
+    ) -> Self {
         // Validate contribution amount
         assert!(
             contribution_amount > 0,
@@ -242,6 +276,11 @@ impl Group {
             "min_members must be less than or equal to max_members"
         );
 
+        // Validate penalty amount when enabled
+        if penalty_enabled {
+            assert!(penalty_amount > 0, "penalty_amount must be greater than 0 when penalty is enabled");
+        }
+
         Self {
             id,
             creator,
@@ -256,6 +295,8 @@ impl Group {
             created_at,
             started: false,
             started_at: 0,
+            penalty_enabled,
+            penalty_amount,
         }
     }
 

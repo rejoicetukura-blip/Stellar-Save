@@ -93,6 +93,17 @@ pub struct ContractUnpaused {
     pub timestamp: u64,
 }
 
+/// Event emitted when a penalty is applied to a member for missing a contribution.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PenaltyApplied {
+    pub group_id: u64,
+    pub member: Address,
+    pub penalty_amount: i128,
+    pub cycle: u32,
+    pub applied_at: u64,
+}
+
 /// Utility functions for emitting events.
 pub struct EventEmitter;
 
@@ -231,6 +242,24 @@ impl EventEmitter {
     pub fn emit_contract_unpaused(env: &Env, admin: Address, timestamp: u64) {
         let event = ContractUnpaused { admin, timestamp };
         env.events().publish(("contract_unpaused",), event);
+    }
+
+    pub fn emit_penalty_applied(
+        env: &Env,
+        group_id: u64,
+        member: Address,
+        penalty_amount: i128,
+        cycle: u32,
+        applied_at: u64,
+    ) {
+        let event = PenaltyApplied {
+            group_id,
+            member,
+            penalty_amount,
+            cycle,
+            applied_at,
+        };
+        env.events().publish(("penalty_applied",), event);
     }
 }
 
