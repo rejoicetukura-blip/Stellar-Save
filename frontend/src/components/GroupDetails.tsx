@@ -4,55 +4,16 @@ import { Card } from './Card';
 import { Badge } from './Badge';
 import { Avatar } from './Avatar';
 import { Tabs, type Tab } from './Tabs';
-
-export interface GroupMember {
-  id: string;
-  address: string;
-  name?: string;
-  joinedAt: Date;
-  totalContributions: number;
-  isActive: boolean;
-}
-
-export interface Contribution {
-  id: string;
-  memberId: string;
-  memberName?: string;
-  amount: number;
-  timestamp: Date;
-  transactionHash: string;
-  status: 'completed' | 'pending' | 'failed';
-}
-
-export interface CycleInfo {
-  cycleNumber: number;
-  startDate: Date;
-  endDate: Date;
-  targetAmount: number;
-  currentAmount: number;
-  status: 'active' | 'completed' | 'upcoming';
-}
-
-export interface GroupInfo {
-  id: string;
-  name: string;
-  description?: string;
-  createdAt: Date;
-  totalMembers: number;
-  targetAmount: number;
-  currentAmount: number;
-  contributionFrequency: 'daily' | 'weekly' | 'monthly';
-  status: 'active' | 'paused' | 'completed';
-}
+import type { DetailedGroup, GroupMember, GroupContribution, GroupCycle } from '../utils/groupApi';
 
 interface GroupDetailsProps {
-  group: GroupInfo;
+  group: DetailedGroup;
   members: GroupMember[];
-  contributions: Contribution[];
-  cycles: CycleInfo[];
-  currentCycle?: CycleInfo;
+  contributions: GroupContribution[];
+  cycles: GroupCycle[];
+  currentCycle?: GroupCycle;
   onMemberClick?: (member: GroupMember) => void;
-  onContributionClick?: (contribution: Contribution) => void;
+  onContributionClick?: (contribution: GroupContribution) => void;
   className?: string;
 }
 

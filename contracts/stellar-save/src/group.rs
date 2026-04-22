@@ -85,6 +85,29 @@ impl GroupStatus {
     pub fn is_terminal(&self) -> bool {
         matches!(self, GroupStatus::Completed | GroupStatus::Cancelled)
     }
+
+    /// Converts GroupStatus to u32 representation.
+    pub fn as_u32(&self) -> u32 {
+        match self {
+            GroupStatus::Pending => 0,
+            GroupStatus::Active => 1,
+            GroupStatus::Paused => 2,
+            GroupStatus::Completed => 3,
+            GroupStatus::Cancelled => 4,
+        }
+    }
+
+    /// Converts u32 to GroupStatus.
+    pub fn from_u32(value: u32) -> Option<Self> {
+        match value {
+            0 => Some(GroupStatus::Pending),
+            1 => Some(GroupStatus::Active),
+            2 => Some(GroupStatus::Paused),
+            3 => Some(GroupStatus::Completed),
+            4 => Some(GroupStatus::Cancelled),
+            _ => None,
+        }
+    }
 }
 
 impl fmt::Display for GroupStatus {
@@ -287,6 +310,7 @@ impl Group {
         self.current_cycle += 1;
 
         // Mark as complete if we've reached the final cycle
+        // Deactivate if we've reached the final cycle
         if self.is_complete() {
             self.status = GroupStatus::Completed;
             self.is_active = false;
@@ -423,6 +447,7 @@ mod tests {
         let creator = Address::generate(&env);
 
         Group::new(1, creator, 0, 604800, 5, 2, 1234567890);
+        Group::new(1, creator, 0, 604800, 5, 1234567890);
     }
 
     #[test]
@@ -432,6 +457,7 @@ mod tests {
         let creator = Address::generate(&env);
 
         Group::new(1, creator, 10_000_000, 0, 5, 2, 1234567890);
+        Group::new(1, creator, 10_000_000, 0, 5, 1234567890);
     }
 
     #[test]
@@ -441,6 +467,7 @@ mod tests {
         let creator = Address::generate(&env);
 
         Group::new(1, creator, 10_000_000, 604800, 1, 2, 1234567890);
+        Group::new(1, creator, 10_000_000, 604800, 1, 1234567890);
     }
 
     #[test]
@@ -449,6 +476,7 @@ mod tests {
         let creator = Address::generate(&env);
 
         let mut group = Group::new(1, creator, 10_000_000, 604800, 3, 2, 1234567890);
+        let mut group = Group::new(1, creator, 10_000_000, 604800, 3, 1234567890);
 
         assert!(!group.is_complete());
 
@@ -481,6 +509,20 @@ mod tests {
         assert_eq!(group.status, GroupStatus::Active);
 
         group.advance_cycle(&env);
+        let mut group = Group::new(1, creator, 10_000_000, 604800, 3, 1234567890);
+
+        assert_eq!(group.current_cycle, 0);
+        assert!(group.is_active);
+
+        group.advance_cycle();
+        assert_eq!(group.current_cycle, 1);
+        assert!(group.is_active);
+
+        group.advance_cycle();
+        assert_eq!(group.current_cycle, 2);
+        assert!(group.is_active);
+
+        group.advance_cycle();
         assert_eq!(group.current_cycle, 3);
         assert!(!group.is_active); // Auto-deactivated when complete
         assert_eq!(group.status, GroupStatus::Completed); // Status set to Completed
@@ -496,6 +538,10 @@ mod tests {
         group.current_cycle = 2;
 
         group.advance_cycle(&env); // Should panic
+        let mut group = Group::new(1, creator, 10_000_000, 604800, 2, 1234567890);
+        group.current_cycle = 2;
+
+        group.advance_cycle(); // Should panic
     }
 
     #[test]
@@ -511,6 +557,12 @@ mod tests {
         group.deactivate();
         assert!(!group.is_active);
         assert_eq!(group.status, GroupStatus::Active); // Status remains Active when just deactivated
+        let mut group = Group::new(1, creator, 10_000_000, 604800, 3, 1234567890);
+
+        assert!(group.is_active);
+
+        group.deactivate();
+        assert!(!group.is_active);
 
         group.reactivate();
         assert!(group.is_active);
@@ -592,6 +644,7 @@ mod tests {
         let creator = Address::generate(&env);
 
         let mut group = Group::new(1, creator, 10_000_000, 604800, 2, 2, 1234567890);
+        let mut group = Group::new(1, creator, 10_000_000, 604800, 2, 1234567890);
         group.current_cycle = 2;
 
         group.reactivate(); // Should panic
@@ -603,6 +656,7 @@ mod tests {
         let creator = Address::generate(&env);
 
         let group = Group::new(1, creator, 10_000_000, 604800, 5, 2, 1234567890);
+        let group = Group::new(1, creator, 10_000_000, 604800, 5, 1234567890);
 
         assert_eq!(group.total_pool_amount(), 50_000_000); // 5 XLM total
     }
@@ -613,6 +667,7 @@ mod tests {
         let creator = Address::generate(&env);
 
         let group = Group::new(1, creator, 10_000_000, 604800, 5, 2, 1234567890);
+        let group = Group::new(1, creator, 10_000_000, 604800, 5, 1234567890);
         assert!(group.validate());
     }
 

@@ -11,6 +11,8 @@ export const ROUTES = {
   SETTINGS: "/settings",
   NOT_FOUND: "/404",
   ERROR: "/500",
+  GROUP_CREATE: "/groups/create",
+  GROUPS_BROWSE: "/groups/browse",
 } as const;
 
 /**

@@ -1,0 +1,19 @@
+[default]
+# Run all tests
+test-threads = 1
+
+# Output formats
+out = ["Html", "Lcov", "Json"]
+output-dir = "coverage"
+
+# Exclude generated/boilerplate files
+exclude-files = ["*/test_snapshots/*"]
+
+# Minimum coverage threshold — fail if below 95%
+fail-under = 95
+
+# Include branch coverage
+branch = true
+
+# Verbose output
+verbose = false

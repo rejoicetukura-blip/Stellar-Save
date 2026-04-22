@@ -19,7 +19,7 @@ export function SearchBar({
   defaultValue = '',
 }: SearchBarProps) {
   const [value, setValue] = useState(defaultValue);
-  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const debounceTimerRef = useRef<number | null>(null);   // ← Fixed here
 
   useEffect(() => {
     if (debounceTimerRef.current) {
@@ -66,6 +66,7 @@ export function SearchBar({
           />
         </svg>
       </div>
+
       <input
         type="search"
         className="search-bar-input"
@@ -74,11 +75,13 @@ export function SearchBar({
         onChange={handleChange}
         aria-label="Search"
       />
+
       {loading && (
         <div className="search-bar-loading" aria-label="Loading">
           <span className="search-bar-spinner" />
         </div>
       )}
+
       {!loading && value && (
         <button
           type="button"

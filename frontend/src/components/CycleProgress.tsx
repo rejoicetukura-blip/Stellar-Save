@@ -1,6 +1,10 @@
-import { useMemo } from 'react';
-import { Badge } from './Badge';
-import './CycleProgress.css';
+import { useMemo } from "react";
+import { Badge } from "./Badge";
+import {
+  calculateCycleProgressFromDeadline,
+  type CycleProgressResult,
+} from "../utils";
+import "./CycleProgress.css";
 
 export interface CycleProgressProps {
   cycleNumber: number;
@@ -9,8 +13,10 @@ export interface CycleProgressProps {
   totalMembers: number;
   targetAmount: number;
   currentAmount?: number;
-  status?: 'active' | 'completed' | 'pending';
+  status?: "active" | "completed" | "pending";
 }
+
+type CycleProgressType = CycleProgressResult;
 
 export function CycleProgress({
   cycleNumber,
@@ -19,38 +25,39 @@ export function CycleProgress({
   totalMembers,
   targetAmount,
   currentAmount = 0,
-  status = 'active',
+  status = "active",
 }: CycleProgressProps) {
-  const timeRemaining = useMemo(() => {
-    const now = new Date();
-    const diff = deadline.getTime() - now.getTime();
-    
-    if (diff <= 0) return 'Ended';
-    
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    
-    if (days > 0) return `${days}d ${hours}h`;
-    if (hours > 0) return `${hours}h`;
-    
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    return `${minutes}m`;
-  }, [deadline]);
+  const cycleProgress = useMemo((): CycleProgressType => {
+    return calculateCycleProgressFromDeadline(
+      deadline,
+      contributedCount,
+      totalMembers,
+    );
+  }, [deadline, contributedCount, totalMembers]);
 
-  const contributionProgress = (contributedCount / totalMembers) * 100;
+  const timeRemaining = cycleProgress.timeRemaining ?? "Ended";
+  const contributionProgress = cycleProgress.contributionProgress;
   const amountProgress = (currentAmount / targetAmount) * 100;
-  const isOverdue = new Date() > deadline;
+  const isOverdue = cycleProgress.isOverdue;
 
   return (
     <div className={`cycle-progress cycle-progress--${status}`}>
       <div className="cycle-progress-header">
         <div className="cycle-progress-title">
           <h3>Cycle {cycleNumber}</h3>
-          <Badge variant={status === 'completed' ? 'success' : status === 'pending' ? 'warning' : 'info'}>
+          <Badge
+            variant={
+              status === "completed"
+                ? "success"
+                : status === "pending"
+                  ? "warning"
+                  : "info"
+            }
+          >
             {status}
           </Badge>
         </div>
-        <div className={`cycle-progress-time ${isOverdue ? 'overdue' : ''}`}>
+        <div className={`cycle-progress-time ${isOverdue ? "overdue" : ""}`}>
           <span className="time-label">Time Remaining:</span>
           <span className="time-value">{timeRemaining}</span>
         </div>
@@ -59,15 +66,21 @@ export function CycleProgress({
       <div className="cycle-progress-stats">
         <div className="stat">
           <span className="stat-label">Contributions</span>
-          <span className="stat-value">{contributedCount}/{totalMembers}</span>
+          <span className="stat-value">
+            {contributedCount}/{totalMembers}
+          </span>
         </div>
         <div className="stat">
           <span className="stat-label">Amount</span>
-          <span className="stat-value">{currentAmount.toLocaleString()} XLM</span>
+          <span className="stat-value">
+            {currentAmount.toLocaleString()} XLM
+          </span>
         </div>
         <div className="stat">
           <span className="stat-label">Target</span>
-          <span className="stat-value">{targetAmount.toLocaleString()} XLM</span>
+          <span className="stat-value">
+            {targetAmount.toLocaleString()} XLM
+          </span>
         </div>
       </div>
 
@@ -75,11 +88,13 @@ export function CycleProgress({
         <div className="progress-item">
           <div className="progress-header">
             <span>Contribution Progress</span>
-            <span className="progress-percentage">{contributionProgress.toFixed(0)}%</span>
+            <span className="progress-percentage">
+              {contributionProgress.toFixed(0)}%
+            </span>
           </div>
           <div className="progress-bar">
-            <div 
-              className="progress-fill" 
+            <div
+              className="progress-fill"
               style={{ width: `${Math.min(contributionProgress, 100)}%` }}
             />
           </div>
@@ -88,11 +103,13 @@ export function CycleProgress({
         <div className="progress-item">
           <div className="progress-header">
             <span>Amount Progress</span>
-            <span className="progress-percentage">{amountProgress.toFixed(0)}%</span>
+            <span className="progress-percentage">
+              {amountProgress.toFixed(0)}%
+            </span>
           </div>
           <div className="progress-bar">
-            <div 
-              className="progress-fill progress-fill--amount" 
+            <div
+              className="progress-fill progress-fill--amount"
               style={{ width: `${Math.min(amountProgress, 100)}%` }}
             />
           </div>
@@ -100,9 +117,7 @@ export function CycleProgress({
       </div>
 
       {contributionProgress === 100 && (
-        <div className="cycle-progress-complete">
-          ✓ All members have contributed
-        </div>
+        <div className="cycle-progress-complete">✓ Cycle complete</div>
       )}
     </div>
   );

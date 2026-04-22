@@ -2,6 +2,7 @@ import { lazy } from "react";
 import { ROUTES } from "./constants";
 import type { RouteConfig } from "./types";
 
+
 // Lazy load page components
 const HomePage = lazy(() => import("../pages/HomePage"));
 const DashboardPage = lazy(() => import("../pages/DashboardPage"));
@@ -9,6 +10,8 @@ const GroupsPage = lazy(() => import("../pages/GroupsPage"));
 const GroupDetailPage = lazy(() => import("../pages/GroupDetailPage"));
 const ProfilePage = lazy(() => import("../pages/ProfilePage"));
 const SettingsPage = lazy(() => import("../pages/SettingsPage"));
+const CreateGroupPage = lazy(() => import("../pages/CreateGroupPage"));
+const BrowseGroupsPage = lazy(() => import("../pages/BrowseGroupsPage"));
 const NotFoundPage = lazy(() => import("../pages/NotFoundPage"));
 const ErrorPage = lazy(() => import("../pages/ErrorPage"));
 /**
@@ -36,6 +39,20 @@ export const routeConfig: RouteConfig[] = [
     protected: true,
     title: "Groups - Stellar Save",
     description: "Browse and join savings groups",
+  },
+  {
+    path: ROUTES.GROUP_CREATE,
+    component: CreateGroupPage,
+    protected: true,
+    title: "Create Group - Stellar Save",
+    description: "Create a new savings group",
+  },
+  {
+    path: ROUTES.GROUPS_BROWSE,
+    component: BrowseGroupsPage,
+    protected: true,
+    title: "Browse Groups - Stellar Save",
+    description: "Discover and join public savings groups",
   },
   {
     path: ROUTES.GROUP_DETAIL,
