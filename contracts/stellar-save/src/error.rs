@@ -82,6 +82,11 @@ pub enum StellarSaveError {
     /// The specified template ID does not exist.
     /// Error Code: 5001
     TemplateNotFound = 5001,
+
+    // Dispute-related errors (6000-6999)
+    /// A dispute is already active on this group.
+    /// Error Code: 6001
+    DisputeActive = 6001,
 }
 
 impl StellarSaveError {
@@ -150,6 +155,9 @@ impl StellarSaveError {
             }
             StellarSaveError::TemplateNotFound => {
                 "The specified template does not exist. Please verify the template ID."
+            }
+            StellarSaveError::DisputeActive => {
+                "A dispute is active on this group. Contributions and payouts are blocked."
             }
         }
     }

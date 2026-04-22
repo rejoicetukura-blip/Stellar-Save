@@ -191,6 +191,10 @@ pub struct Group {
     /// Used for tracking when the first cycle started.
     /// Only set when started is true.
     pub started_at: u64,
+
+    /// Whether a dispute is currently active on this group.
+    /// While true, contributions and payouts are blocked.
+    pub dispute_active: bool,
 }
 
 impl Group {
@@ -256,6 +260,7 @@ impl Group {
             created_at,
             started: false,
             started_at: 0,
+            dispute_active: false,
         }
     }
 

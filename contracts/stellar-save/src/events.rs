@@ -93,6 +93,26 @@ pub struct ContractUnpaused {
     pub timestamp: u64,
 }
 
+/// Event emitted when a member raises a dispute on a group.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DisputeRaised {
+    pub group_id: u64,
+    pub raised_by: Address,
+    pub reason: soroban_sdk::String,
+    pub raised_at: u64,
+}
+
+/// Event emitted when the creator resolves a dispute on a group.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DisputeResolved {
+    pub group_id: u64,
+    pub resolved_by: Address,
+    pub resolution: soroban_sdk::String,
+    pub resolved_at: u64,
+}
+
 /// Utility functions for emitting events.
 pub struct EventEmitter;
 
@@ -231,6 +251,32 @@ impl EventEmitter {
     pub fn emit_contract_unpaused(env: &Env, admin: Address, timestamp: u64) {
         let event = ContractUnpaused { admin, timestamp };
         env.events().publish(("contract_unpaused",), event);
+    }
+
+    pub fn emit_dispute_raised(
+        env: &Env,
+        group_id: u64,
+        raised_by: Address,
+        reason: soroban_sdk::String,
+        raised_at: u64,
+    ) {
+        env.events().publish(
+            ("dispute_raised",),
+            DisputeRaised { group_id, raised_by, reason, raised_at },
+        );
+    }
+
+    pub fn emit_dispute_resolved(
+        env: &Env,
+        group_id: u64,
+        resolved_by: Address,
+        resolution: soroban_sdk::String,
+        resolved_at: u64,
+    ) {
+        env.events().publish(
+            ("dispute_resolved",),
+            DisputeResolved { group_id, resolved_by, resolution, resolved_at },
+        );
     }
 }
 
