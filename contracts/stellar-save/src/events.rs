@@ -93,6 +93,24 @@ pub struct ContractUnpaused {
     pub timestamp: u64,
 }
 
+/// Event emitted when a cycle starts.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CycleStarted {
+    pub group_id: u64,
+    pub cycle_id: u32,
+    pub started_at: u64,
+}
+
+/// Event emitted when a cycle ends (transitions to next).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CycleEnded {
+    pub group_id: u64,
+    pub cycle_id: u32,
+    pub ended_at: u64,
+}
+
 /// Utility functions for emitting events.
 pub struct EventEmitter;
 
@@ -511,5 +529,53 @@ mod tests {
         let member = Address::generate(&env);
 
         EventEmitter::emit_member_left(&env, 1, member, 2, 1234567890);
+    }
+
+    #[test]
+    fn test_group_paused_event() {
+        let env = Env::default();
+        let creator = Address::generate(&env);
+
+        let event = GroupPaused {
+            group_id: 1,
+            paused_by: creator.clone(),
+            paused_at: 1234567890,
+        };
+
+        assert_eq!(event.group_id, 1);
+        assert_eq!(event.paused_by, creator);
+        assert_eq!(event.paused_at, 1234567890);
+    }
+
+    #[test]
+    fn test_group_unpaused_event() {
+        let env = Env::default();
+        let creator = Address::generate(&env);
+
+        let event = GroupUnpaused {
+            group_id: 1,
+            unpaused_by: creator.clone(),
+            unpaused_at: 1234567890,
+        };
+
+        assert_eq!(event.group_id, 1);
+        assert_eq!(event.unpaused_by, creator);
+        assert_eq!(event.unpaused_at, 1234567890);
+    }
+
+    #[test]
+    fn test_event_emitter_group_paused() {
+        let env = Env::default();
+        let creator = Address::generate(&env);
+
+        EventEmitter::emit_group_paused(&env, 1, creator, 1234567890);
+    }
+
+    #[test]
+    fn test_event_emitter_group_unpaused() {
+        let env = Env::default();
+        let creator = Address::generate(&env);
+
+        EventEmitter::emit_group_unpaused(&env, 1, creator, 1234567890);
     }
 }
