@@ -487,4 +487,52 @@ mod tests {
 
         EventEmitter::emit_member_left(&env, 1, member, 2, 1234567890);
     }
+
+    #[test]
+    fn test_group_paused_event() {
+        let env = Env::default();
+        let creator = Address::generate(&env);
+
+        let event = GroupPaused {
+            group_id: 1,
+            paused_by: creator.clone(),
+            paused_at: 1234567890,
+        };
+
+        assert_eq!(event.group_id, 1);
+        assert_eq!(event.paused_by, creator);
+        assert_eq!(event.paused_at, 1234567890);
+    }
+
+    #[test]
+    fn test_group_unpaused_event() {
+        let env = Env::default();
+        let creator = Address::generate(&env);
+
+        let event = GroupUnpaused {
+            group_id: 1,
+            unpaused_by: creator.clone(),
+            unpaused_at: 1234567890,
+        };
+
+        assert_eq!(event.group_id, 1);
+        assert_eq!(event.unpaused_by, creator);
+        assert_eq!(event.unpaused_at, 1234567890);
+    }
+
+    #[test]
+    fn test_event_emitter_group_paused() {
+        let env = Env::default();
+        let creator = Address::generate(&env);
+
+        EventEmitter::emit_group_paused(&env, 1, creator, 1234567890);
+    }
+
+    #[test]
+    fn test_event_emitter_group_unpaused() {
+        let env = Env::default();
+        let creator = Address::generate(&env);
+
+        EventEmitter::emit_group_unpaused(&env, 1, creator, 1234567890);
+    }
 }

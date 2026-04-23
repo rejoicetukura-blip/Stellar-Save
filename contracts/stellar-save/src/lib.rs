@@ -391,11 +391,17 @@ impl StellarSaveContract {
         contribution_amount: i128,
         cycle_duration: u64,
         max_members: u32,
+        grace_period_seconds: u64,
     ) -> Result<u64, StellarSaveError> {
         // 1. Authorization: Only the creator can initiate this transaction
         creator.require_auth();
 
-        // 2. Global Validation: Check against ContractConfig
+        // 2. Validate grace period (max 7 days)
+        if grace_period_seconds > 604800 {
+            return Err(StellarSaveError::InvalidState);
+        }
+
+        // 3. Global Validation: Check against ContractConfig
         let config_key = StorageKeyBuilder::contract_config();
         if let Some(config) = env
             .storage()
@@ -413,10 +419,10 @@ impl StellarSaveContract {
             }
         }
 
-        // 3. Generate unique group ID
+        // 4. Generate unique group ID
         let group_id = Self::generate_next_group_id(&env)?;
 
-        // 4. Initialize Group Struct
+        // 5. Initialize Group Struct
         let current_time = env.ledger().timestamp();
         let min_members = 2; // Default minimum members
         let new_group = Group::new(
@@ -427,9 +433,10 @@ impl StellarSaveContract {
             max_members,
             min_members,
             current_time,
+            grace_period_seconds,
         );
 
-        // 5. Store Group Data
+        // 6. Store Group Data
         let group_key = StorageKeyBuilder::group_data(group_id);
         env.storage().persistent().set(&group_key, &new_group);
 
@@ -439,11 +446,11 @@ impl StellarSaveContract {
             .persistent()
             .set(&status_key, &GroupStatus::Pending);
 
-        // 6. Emit GroupCreated Event
+        // 7. Emit GroupCreated Event
         env.events()
             .publish((Symbol::new(&env, "GroupCreated"), creator), group_id);
 
-        // 7. Return Group ID
+        // 8. Return Group ID
         Ok(group_id)
     }
 
@@ -1442,7 +1449,7 @@ pub fn is_member(
         caller.require_auth();
 
         let group_key = StorageKeyBuilder::group_data(group_id);
-        let group = env
+        let mut group = env
             .storage()
             .persistent()
             .get::<_, Group>(&group_key)
@@ -1466,15 +1473,13 @@ pub fn is_member(
         let new_status = GroupStatus::Paused;
         env.storage().persistent().set(&status_key, &new_status);
 
+        // Update the paused flag on the Group struct
+        group.paused = true;
+        group.status = GroupStatus::Paused;
+        env.storage().persistent().set(&group_key, &group);
+
         let timestamp = env.ledger().timestamp();
-        EventEmitter::emit_group_status_changed(
-            &env,
-            group_id,
-            current_status as u32,
-            new_status as u32,
-            caller,
-            timestamp,
-        );
+        EventEmitter::emit_group_paused(&env, group_id, caller, timestamp);
 
         Ok(())
     }
@@ -1498,7 +1503,7 @@ pub fn is_member(
         caller.require_auth();
 
         let group_key = StorageKeyBuilder::group_data(group_id);
-        let group = env
+        let mut group = env
             .storage()
             .persistent()
             .get::<_, Group>(&group_key)
@@ -1522,17 +1527,21 @@ pub fn is_member(
         let new_status = GroupStatus::Active;
         env.storage().persistent().set(&status_key, &new_status);
 
+        // Update the paused flag on the Group struct
+        group.paused = false;
+        group.status = GroupStatus::Active;
+        env.storage().persistent().set(&group_key, &group);
+
         let timestamp = env.ledger().timestamp();
-        EventEmitter::emit_group_status_changed(
-            &env,
-            group_id,
-            current_status as u32,
-            new_status as u32,
-            caller,
-            timestamp,
-        );
+        EventEmitter::emit_group_unpaused(&env, group_id, caller, timestamp);
 
         Ok(())
+    }
+
+    /// Unpauses a paused group, allowing contributions and payouts again.
+    /// Alias for resume_group with the name matching the issue specification.
+    pub fn unpause_group(env: Env, group_id: u64, caller: Address) -> Result<(), StellarSaveError> {
+        Self::resume_group(env, group_id, caller)
     }
 
     /// Cancels a group and returns funds to contributors.
@@ -2156,7 +2165,25 @@ pub fn is_member(
         group_id: u64,
         cycle_number: u32,
     ) -> Result<Vec<Address>, StellarSaveError> {
-        // 1. Get all members in the group
+        // 1. Load the group to access grace_period_seconds and timing info
+        let group_key = StorageKeyBuilder::group_data(group_id);
+        let group: Group = env
+            .storage()
+            .persistent()
+            .get(&group_key)
+            .ok_or(StellarSaveError::GroupNotFound)?;
+
+        // 2. Only report misses after the grace period has elapsed
+        if group.started {
+            let cycle_deadline = group.started_at
+                + (group.cycle_duration * (cycle_number as u64 + 1));
+            let grace_end = cycle_deadline + group.grace_period_seconds;
+            if env.ledger().timestamp() <= grace_end {
+                return Ok(Vec::new(&env));
+            }
+        }
+
+        // 3. Get all members in the group
         let members_key = StorageKeyBuilder::group_members(group_id);
         let members: Vec<Address> = env
             .storage()
@@ -2164,21 +2191,16 @@ pub fn is_member(
             .get(&members_key)
             .ok_or(StellarSaveError::GroupNotFound)?;
 
-        // 2. Initialize result vector for non-contributors
+        // 4. Collect members with no contribution record for this cycle
         let mut missed_members = Vec::new(&env);
-
-        // 3. Check each member's contribution status for this cycle
         for member in members.iter() {
             let contrib_key =
                 StorageKeyBuilder::contribution_individual(group_id, cycle_number, member.clone());
-
-            // If no contribution record exists for this member in this cycle, they missed it
             if !env.storage().persistent().has(&contrib_key) {
                 missed_members.push_back(member);
             }
         }
 
-        // 4. Return vector of addresses who haven't contributed
         Ok(missed_members)
     }
 
@@ -2419,6 +2441,73 @@ pub fn is_member(
         Ok(())
     }
 
+    /// Records a contribution from a member for the current cycle.
+    ///
+    /// # Arguments
+    /// * `env` - Soroban environment
+    /// * `group_id` - ID of the group to contribute to
+    /// * `member` - Address of the contributing member
+    /// * `amount` - Contribution amount in stroops (must match group's required amount)
+    ///
+    /// # Returns
+    /// * `Ok(())` - Contribution recorded successfully
+    /// * `Err(StellarSaveError)` - If validation fails
+    ///
+    /// # Errors
+    /// - `GroupNotFound` - Group doesn't exist
+    /// - `InvalidState` - Group is paused or not in Active status
+    /// - `NotMember` - Caller is not a member of the group
+    /// - `AlreadyContributed` - Member already contributed this cycle
+    /// - `InvalidAmount` - Amount doesn't match group's required contribution
+    pub fn contribute(
+        env: Env,
+        group_id: u64,
+        member: Address,
+        amount: i128,
+    ) -> Result<(), StellarSaveError> {
+        member.require_auth();
+
+        let group_key = StorageKeyBuilder::group_data(group_id);
+        let group: Group = env
+            .storage()
+            .persistent()
+            .get(&group_key)
+            .ok_or(StellarSaveError::GroupNotFound)?;
+
+        // whenNotPaused: reject if group is paused
+        if group.paused {
+            return Err(StellarSaveError::InvalidState);
+        }
+
+        if group.status != GroupStatus::Active {
+            return Err(StellarSaveError::InvalidState);
+        }
+
+        // Verify caller is a member
+        let member_key = StorageKeyBuilder::member_profile(group_id, member.clone());
+        if !env.storage().persistent().has(&member_key) {
+            return Err(StellarSaveError::NotMember);
+        }
+
+        // Validate contribution amount matches group requirement
+        Self::validate_contribution_amount(&env, group_id, amount)?;
+
+        let timestamp = env.ledger().timestamp();
+        Self::record_contribution(&env, group_id, group.current_cycle, member.clone(), amount, timestamp)?;
+
+        EventEmitter::emit_contribution_made(
+            &env,
+            group_id,
+            member,
+            amount,
+            group.current_cycle,
+            amount, // cycle_total placeholder; actual total tracked in storage
+            timestamp,
+        );
+
+        Ok(())
+    }
+
     /// Allows members to withdraw their share in emergency situations.
     ///
     /// Emergency conditions:
@@ -2643,6 +2732,7 @@ pub fn is_member(
             5,          // Default max members
             2,          // Default min members
             timestamp,
+            0,          // No grace period
         );
 
         // Simulate adding members (in production, this would be tracked in storage)
@@ -2773,7 +2863,7 @@ fn test_get_total_groups() {
 
     // Create a group
     env.mock_all_auths();
-    client.create_group(&creator, &100, &3600, &5);
+    client.create_group(&creator, &100, &3600, &5, &0);
 
     // Total groups should now be 1
     assert_eq!(client.get_total_groups(), 1);
@@ -2793,7 +2883,7 @@ mod tests {
 
         // Manually store a group to test retrieval
         let group_id = 1;
-        let group = Group::new(group_id, creator.clone(), 100, 3600, 5, 2, 12345);
+        let group = Group::new(group_id, creator.clone(), 100, 3600, 5, 2, 12345, 0);
 
         // This simulates the storage state after create_group is called
         env.storage()
@@ -2825,7 +2915,7 @@ mod tests {
 
         // Create a group at cycle 2
         let group_id = 1;
-        let mut group = Group::new(group_id, creator.clone(), 100, 3600, 5, 2, 12345);
+        let mut group = Group::new(group_id, creator.clone(), 100, 3600, 5, 2, 12345, 0);
         group.current_cycle = 2;
 
         // Store the group
@@ -2853,7 +2943,7 @@ mod tests {
 
         // Create a group at cycle 2
         let group_id = 1;
-        let mut group = Group::new(group_id, creator.clone(), 100, 3600, 5, 2, 12345);
+        let mut group = Group::new(group_id, creator.clone(), 100, 3600, 5, 2, 12345, 0);
         group.current_cycle = 2;
 
         // Store the group
@@ -2946,7 +3036,7 @@ mod tests {
 
         // Create a group with initial member_count of 0
         let group_id = 1;
-        let group = Group::new(group_id, creator.clone(), 100, 3600, 5, 2, 12345);
+        let group = Group::new(group_id, creator.clone(), 100, 3600, 5, 2, 12345, 0);
 
         // Store the group
         env.storage()
@@ -2977,7 +3067,7 @@ mod tests {
 
         // Create a group at cycle 3
         let group_id = 1;
-        let mut group = Group::new(group_id, creator.clone(), 100, 3600, 5, 2, 12345);
+        let mut group = Group::new(group_id, creator.clone(), 100, 3600, 5, 2, 12345, 0);
         group.current_cycle = 3;
 
         // Simulate adding members
@@ -3120,13 +3210,13 @@ mod tests {
 
         // Create first group
         env.mock_all_auths();
-        client.create_group(&creator, &100, &3600, &5);
+        client.create_group(&creator, &100, &3600, &5, &0);
 
         let count = client.get_total_groups_created();
         assert_eq!(count, 1);
 
         // Create second group
-        client.create_group(&creator, &200, &7200, &10);
+        client.create_group(&creator, &200, &7200, &10, &0);
 
         let count = client.get_total_groups_created();
         assert_eq!(count, 2);
@@ -3154,7 +3244,7 @@ mod tests {
 
         // Create a group
         let group_id = 1;
-        let group = Group::new(group_id, member.clone(), 100, 3600, 5, 2, 12345);
+        let group = Group::new(group_id, member.clone(), 100, 3600, 5, 2, 12345, 0);
         env.storage()
             .persistent()
             .set(&StorageKeyBuilder::group_data(group_id), &group);
@@ -3360,7 +3450,7 @@ mod tests {
 
         // Create a group
         let group_id = 1;
-        let group = Group::new(group_id, member.clone(), 100, 3600, 5, 2, 12345);
+        let group = Group::new(group_id, member.clone(), 100, 3600, 5, 2, 12345, 0);
         env.storage()
             .persistent()
             .set(&StorageKeyBuilder::group_data(group_id), &group);
@@ -3661,7 +3751,7 @@ mod tests {
 
         // Create a group
         let group_id = 1;
-        let group = Group::new(group_id, creator.clone(), 100, 3600, 5, 2, 12345);
+        let group = Group::new(group_id, creator.clone(), 100, 3600, 5, 2, 12345, 0);
         env.storage()
             .persistent()
             .set(&StorageKeyBuilder::group_data(group_id), &group);
@@ -3988,7 +4078,7 @@ mod tests {
         let joined_at = 1704067200u64;
 
         // Store group data
-        let mut group = Group::new(group_id, creator.clone(), 100, 3600, 5, 2, joined_at);
+        let mut group = Group::new(group_id, creator.clone(), 100, 3600, 5, 2, joined_at, 0);
         group.member_count = 1; // Creator already joined
         let group_key = StorageKeyBuilder::group_data(group_id);
         env.storage().persistent().set(&group_key, &group);
@@ -4060,7 +4150,7 @@ mod tests {
         let joined_at = 1704067200u64;
 
         // Store group data
-        let group = Group::new(group_id, creator.clone(), 100, 3600, 5, 2, joined_at);
+        let group = Group::new(group_id, creator.clone(), 100, 3600, 5, 2, joined_at, 0);
         let group_key = StorageKeyBuilder::group_data(group_id);
         env.storage().persistent().set(&group_key, &group);
 
@@ -4099,7 +4189,7 @@ mod tests {
         let joined_at = 1704067200u64;
 
         // Store group data with max_members = 3 and member_count = 3 (full)
-        let mut group = Group::new(group_id, creator.clone(), 100, 3600, 3, 2, joined_at);
+        let mut group = Group::new(group_id, creator.clone(), 100, 3600, 3, 2, joined_at, 0);
         group.member_count = 3;
         let group_key = StorageKeyBuilder::group_data(group_id);
         env.storage().persistent().set(&group_key, &group);
@@ -4129,7 +4219,7 @@ mod tests {
         let joined_at = 1704067200u64;
 
         // Store group data
-        let group = Group::new(group_id, creator.clone(), 100, 3600, 5, 2, joined_at);
+        let group = Group::new(group_id, creator.clone(), 100, 3600, 5, 2, joined_at, 0);
         let group_key = StorageKeyBuilder::group_data(group_id);
         env.storage().persistent().set(&group_key, &group);
 
@@ -4159,7 +4249,7 @@ mod tests {
         let joined_at = 1704067200u64;
 
         // Store group data
-        let mut group = Group::new(group_id, creator.clone(), 100, 3600, 5, 2, joined_at);
+        let mut group = Group::new(group_id, creator.clone(), 100, 3600, 5, 2, joined_at, 0);
         group.member_count = 2; // Creator and one member already joined
         let group_key = StorageKeyBuilder::group_data(group_id);
         env.storage().persistent().set(&group_key, &group);
@@ -4236,7 +4326,7 @@ mod tests {
         let group_id = 1;
 
         // Setup: Create group and members
-        let group = Group::new(group_id, creator.clone(), 100, 3600, 3, 2, 1000);
+        let group = Group::new(group_id, creator.clone(), 100, 3600, 3, 2, 1000, 0);
         env.storage()
             .persistent()
             .set(&StorageKeyBuilder::group_data(group_id), &group);
@@ -4342,7 +4432,7 @@ mod tests {
         let group_id = 1;
 
         // Setup: Create group and members
-        let group = Group::new(group_id, creator.clone(), 100, 3600, 3, 2, 1000);
+        let group = Group::new(group_id, creator.clone(), 100, 3600, 3, 2, 1000, 0);
         env.storage()
             .persistent()
             .set(&StorageKeyBuilder::group_data(group_id), &group);
@@ -4426,7 +4516,7 @@ mod tests {
         let cycle = 0;
 
         // Setup: Create group and members
-        let group = Group::new(group_id, creator.clone(), 100, 3600, 3, 2, 1000);
+        let group = Group::new(group_id, creator.clone(), 100, 3600, 3, 2, 1000, 0);
         env.storage()
             .persistent()
             .set(&StorageKeyBuilder::group_data(group_id), &group);
@@ -4475,7 +4565,7 @@ mod tests {
         let group_id = 1;
 
         // Setup: Create group and members
-        let group = Group::new(group_id, creator.clone(), 100, 3600, 3, 2, 1000);
+        let group = Group::new(group_id, creator.clone(), 100, 3600, 3, 2, 1000, 0);
         env.storage()
             .persistent()
             .set(&StorageKeyBuilder::group_data(group_id), &group);
@@ -4559,7 +4649,7 @@ mod tests {
         let group_id = 1;
 
         // Setup: Create group
-        let group = Group::new(group_id, creator.clone(), 100, 3600, 3, 2, 1000);
+        let group = Group::new(group_id, creator.clone(), 100, 3600, 3, 2, 1000, 0);
         env.storage()
             .persistent()
             .set(&StorageKeyBuilder::group_data(group_id), &group);
@@ -4620,7 +4710,7 @@ mod tests {
         let group_id = 1;
 
         // Setup: Create active group
-        let group = Group::new(group_id, creator.clone(), 100, 3600, 3, 2, 1000);
+        let group = Group::new(group_id, creator.clone(), 100, 3600, 3, 2, 1000, 0);
         env.storage()
             .persistent()
             .set(&StorageKeyBuilder::group_data(group_id), &group);
@@ -4676,7 +4766,7 @@ mod tests {
         let group_id = 1;
 
         // Setup: Create group with 2 members
-        let group = Group::new(group_id, creator.clone(), 100, 3600, 3, 2, 1000);
+        let group = Group::new(group_id, creator.clone(), 100, 3600, 3, 2, 1000, 0);
         env.storage()
             .persistent()
             .set(&StorageKeyBuilder::group_data(group_id), &group);
@@ -4870,14 +4960,14 @@ mod tests {
         // Create multiple groups with different contribution amounts
         let group1_id = 1;
         let group1_amount = 10_000_000; // 1 XLM
-        let group1 = Group::new(group1_id, creator.clone(), group1_amount, 3600, 5, 2, 12345);
+        let group1 = Group::new(group1_id, creator.clone(), group1_amount, 3600, 5, 2, 12345, 0);
         env.storage()
             .persistent()
             .set(&StorageKeyBuilder::group_data(group1_id), &group1);
 
         let group2_id = 2;
         let group2_amount = 50_000_000; // 5 XLM
-        let group2 = Group::new(group2_id, creator.clone(), group2_amount, 3600, 5, 2, 12345);
+        let group2 = Group::new(group2_id, creator.clone(), group2_amount, 3600, 5, 2, 12345, 0);
         env.storage()
             .persistent()
             .set(&StorageKeyBuilder::group_data(group2_id), &group2);
@@ -5905,7 +5995,7 @@ mod tests {
         // Test with 1 week duration
         let group1_id = 1;
         let duration1 = 604800u64; // 1 week
-        let mut group1 = Group::new(group1_id, creator.clone(), 100, duration1, 5, 2, started_at);
+        let mut group1 = Group::new(group1_id, creator.clone(), 100, duration1, 5, 2, started_at, 0);
         group1.started = true;
         group1.started_at = started_at;
         env.storage()
@@ -5915,7 +6005,7 @@ mod tests {
         // Test with 1 month duration
         let group2_id = 2;
         let duration2 = 2592000u64; // 30 days
-        let mut group2 = Group::new(group2_id, creator.clone(), 100, duration2, 5, 2, started_at);
+        let mut group2 = Group::new(group2_id, creator.clone(), 100, duration2, 5, 2, started_at, 0);
         group2.started = true;
         group2.started_at = started_at;
         env.storage()
@@ -6198,7 +6288,7 @@ mod tests {
         // Test with 1 hour duration
         let group1_id = 1;
         let duration1 = 3600u64; // 1 hour
-        let mut group1 = Group::new(group1_id, creator.clone(), 100, duration1, 5, 2, started_at);
+        let mut group1 = Group::new(group1_id, creator.clone(), 100, duration1, 5, 2, started_at, 0);
         group1.started = true;
         group1.started_at = started_at;
         group1.current_cycle = 0;
@@ -6209,7 +6299,7 @@ mod tests {
         // Test with 1 week duration
         let group2_id = 2;
         let duration2 = 604800u64; // 1 week
-        let mut group2 = Group::new(group2_id, creator.clone(), 100, duration2, 5, 2, started_at);
+        let mut group2 = Group::new(group2_id, creator.clone(), 100, duration2, 5, 2, started_at, 0);
         group2.started = true;
         group2.started_at = started_at;
         group2.current_cycle = 0;
@@ -6432,7 +6522,7 @@ mod tests {
         let creator = Address::generate(&env);
         let group_id = 1;
 
-        let mut group = Group::new(group_id, creator.clone(), 100, 3600, 5, 2, 12345);
+        let mut group = Group::new(group_id, creator.clone(), 100, 3600, 5, 2, 12345, 0);
         group.status = GroupStatus::Pending;
         env.storage()
             .persistent()
@@ -6450,7 +6540,7 @@ mod tests {
         let creator = Address::generate(&env);
         let group_id = 1;
 
-        let mut group = Group::new(group_id, creator.clone(), 100, 3600, 2, 2, 12345);
+        let mut group = Group::new(group_id, creator.clone(), 100, 3600, 2, 2, 12345, 0);
         group.status = GroupStatus::Active;
         group.member_count = 2;
         env.storage()
@@ -6487,7 +6577,7 @@ mod tests {
         let creator = Address::generate(&env);
         let group_id = 1;
 
-        let mut group = Group::new(group_id, creator.clone(), 100, 3600, 2, 2, 12345);
+        let mut group = Group::new(group_id, creator.clone(), 100, 3600, 2, 2, 12345, 0);
         group.status = GroupStatus::Active;
         group.member_count = 2;
         env.storage()
@@ -6524,7 +6614,7 @@ mod tests {
         let creator = Address::generate(&env);
         let group_id = 1;
 
-        let mut group = Group::new(group_id, creator.clone(), 100, 3600, 2, 2, 12345);
+        let mut group = Group::new(group_id, creator.clone(), 100, 3600, 2, 2, 12345, 0);
         group.status = GroupStatus::Active;
         group.member_count = 2;
         env.storage()
@@ -8686,7 +8776,7 @@ mod tests {
         let client = StellarSaveContractClient::new(&env, &contract_id);
         let creator = Address::generate(&env);
 
-        let group = Group::new(1, creator.clone(), 100, 3600, 5, 2, 12345);
+        let group = Group::new(1, creator.clone(), 100, 3600, 5, 2, 12345, 0);
         env.storage()
             .persistent()
             .set(&StorageKeyBuilder::group_data(1), &group);
@@ -8705,7 +8795,7 @@ mod tests {
         let member1 = Address::generate(&env);
         let member2 = Address::generate(&env);
 
-        let group = Group::new(1, creator.clone(), 100, 3600, 5, 2, 12345);
+        let group = Group::new(1, creator.clone(), 100, 3600, 5, 2, 12345, 0);
         env.storage()
             .persistent()
             .set(&StorageKeyBuilder::group_data(1), &group);
@@ -8729,7 +8819,7 @@ mod tests {
         let creator = Address::generate(&env);
         let member = Address::generate(&env);
 
-        let group = Group::new(1, creator.clone(), 100, 3600, 5, 2, 12345);
+        let group = Group::new(1, creator.clone(), 100, 3600, 5, 2, 12345, 0);
         env.storage()
             .persistent()
             .set(&StorageKeyBuilder::group_data(1), &group);
@@ -8752,7 +8842,7 @@ mod tests {
         let creator = Address::generate(&env);
         let recipient = Address::generate(&env);
 
-        let mut group = Group::new(1, creator.clone(), 100, 3600, 5, 2, 12345);
+        let mut group = Group::new(1, creator.clone(), 100, 3600, 5, 2, 12345, 0);
         group.current_cycle = 2;
         env.storage()
             .persistent()
@@ -8775,7 +8865,7 @@ mod tests {
         let creator = Address::generate(&env);
         let member = Address::generate(&env);
 
-        let group = Group::new(1, creator.clone(), 100, 3600, 5, 2, 12345);
+        let group = Group::new(1, creator.clone(), 100, 3600, 5, 2, 12345, 0);
         env.storage()
             .persistent()
             .set(&StorageKeyBuilder::group_data(1), &group);
@@ -8890,5 +8980,187 @@ mod tests {
         assert_eq!(GroupStatus::from_u32(3), Some(GroupStatus::Completed));
         assert_eq!(GroupStatus::from_u32(4), Some(GroupStatus::Cancelled));
         assert_eq!(GroupStatus::from_u32(5), None);
+    }
+
+    // ── Grace period tests ────────────────────────────────────────────────────
+
+    /// Helper: create a group with a grace period, store it, and return (group_id, client).
+    fn setup_group_with_grace(
+        env: &Env,
+        grace_period_seconds: u64,
+    ) -> (u64, StellarSaveContractClient) {
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(env, &contract_id);
+        let creator = Address::generate(env);
+        env.mock_all_auths();
+        let group_id = client
+            .create_group(&creator, &10_000_000, &604800, &5, &grace_period_seconds)
+            .unwrap();
+        (group_id, client)
+    }
+
+    #[test]
+    fn test_create_group_stores_grace_period() {
+        let env = Env::default();
+        let (group_id, client) = setup_group_with_grace(&env, 3600);
+        let group = client.get_group(&group_id).unwrap();
+        assert_eq!(group.grace_period_seconds, 3600);
+    }
+
+    #[test]
+    fn test_create_group_zero_grace_period() {
+        let env = Env::default();
+        let (group_id, client) = setup_group_with_grace(&env, 0);
+        let group = client.get_group(&group_id).unwrap();
+        assert_eq!(group.grace_period_seconds, 0);
+    }
+
+    #[test]
+    fn test_create_group_max_grace_period() {
+        let env = Env::default();
+        // 604800 = exactly 7 days — should succeed
+        let (group_id, client) = setup_group_with_grace(&env, 604800);
+        let group = client.get_group(&group_id).unwrap();
+        assert_eq!(group.grace_period_seconds, 604800);
+    }
+
+    #[test]
+    fn test_create_group_grace_period_exceeds_max() {
+        let env = Env::default();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        let creator = Address::generate(&env);
+        env.mock_all_auths();
+        // 604801 = 7 days + 1 second — should fail
+        let result = client.try_create_group(&creator, &10_000_000, &604800, &5, &604801);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_get_missed_contributions_within_grace_period() {
+        let env = Env::default();
+        let started_at: u64 = 1000;
+        let cycle_duration: u64 = 604800;
+        let grace: u64 = 3600; // 1 hour
+
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        let creator = Address::generate(&env);
+        let member = Address::generate(&env);
+
+        env.mock_all_auths();
+        env.ledger().set_timestamp(started_at);
+
+        let group_id = client
+            .create_group(&creator, &10_000_000, &cycle_duration, &5, &grace)
+            .unwrap();
+
+        // Store members list directly so get_missed_contributions can find them
+        let members_key = StorageKeyBuilder::group_members(group_id);
+        let mut members = soroban_sdk::Vec::new(&env);
+        members.push_back(member.clone());
+        env.storage().persistent().set(&members_key, &members);
+
+        // Activate the group
+        let group_key = StorageKeyBuilder::group_data(group_id);
+        let mut group: Group = env.storage().persistent().get(&group_key).unwrap();
+        group.member_count = 2;
+        group.activate(started_at);
+        env.storage().persistent().set(&group_key, &group);
+
+        // Advance time to just after the deadline but still within grace period
+        let deadline = started_at + cycle_duration;
+        env.ledger().set_timestamp(deadline + grace / 2);
+
+        // Should return empty — still within grace period
+        let missed = client.get_missed_contributions(&group_id, &0).unwrap();
+        assert_eq!(missed.len(), 0);
+    }
+
+    #[test]
+    fn test_get_missed_contributions_after_grace_period() {
+        let env = Env::default();
+        let started_at: u64 = 1000;
+        let cycle_duration: u64 = 604800;
+        let grace: u64 = 3600; // 1 hour
+
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        let creator = Address::generate(&env);
+        let member = Address::generate(&env);
+
+        env.mock_all_auths();
+        env.ledger().set_timestamp(started_at);
+
+        let group_id = client
+            .create_group(&creator, &10_000_000, &cycle_duration, &5, &grace)
+            .unwrap();
+
+        // Store members list
+        let members_key = StorageKeyBuilder::group_members(group_id);
+        let mut members = soroban_sdk::Vec::new(&env);
+        members.push_back(member.clone());
+        env.storage().persistent().set(&members_key, &members);
+
+        // Activate the group
+        let group_key = StorageKeyBuilder::group_data(group_id);
+        let mut group: Group = env.storage().persistent().get(&group_key).unwrap();
+        group.member_count = 2;
+        group.activate(started_at);
+        env.storage().persistent().set(&group_key, &group);
+
+        // Advance time past deadline + grace period
+        let deadline = started_at + cycle_duration;
+        env.ledger().set_timestamp(deadline + grace + 1);
+
+        // Member has not contributed — should appear in missed list
+        let missed = client.get_missed_contributions(&group_id, &0).unwrap();
+        assert_eq!(missed.len(), 1);
+        assert_eq!(missed.get(0).unwrap(), member);
+    }
+
+    #[test]
+    fn test_get_missed_contributions_contributed_within_grace_period() {
+        let env = Env::default();
+        let started_at: u64 = 1000;
+        let cycle_duration: u64 = 604800;
+        let grace: u64 = 3600;
+
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        let creator = Address::generate(&env);
+        let member = Address::generate(&env);
+
+        env.mock_all_auths();
+        env.ledger().set_timestamp(started_at);
+
+        let group_id = client
+            .create_group(&creator, &10_000_000, &cycle_duration, &5, &grace)
+            .unwrap();
+
+        // Store members list
+        let members_key = StorageKeyBuilder::group_members(group_id);
+        let mut members = soroban_sdk::Vec::new(&env);
+        members.push_back(member.clone());
+        env.storage().persistent().set(&members_key, &members);
+
+        // Activate the group
+        let group_key = StorageKeyBuilder::group_data(group_id);
+        let mut group: Group = env.storage().persistent().get(&group_key).unwrap();
+        group.member_count = 2;
+        group.activate(started_at);
+        env.storage().persistent().set(&group_key, &group);
+
+        // Member contributes during grace period
+        let contrib_key = StorageKeyBuilder::contribution_individual(group_id, 0, member.clone());
+        env.storage().persistent().set(&contrib_key, &true);
+
+        // Advance time past deadline + grace period
+        let deadline = started_at + cycle_duration;
+        env.ledger().set_timestamp(deadline + grace + 1);
+
+        // Member contributed — should NOT appear in missed list
+        let missed = client.get_missed_contributions(&group_id, &0).unwrap();
+        assert_eq!(missed.len(), 0);
     }
 }
