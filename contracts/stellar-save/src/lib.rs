@@ -2793,6 +2793,368 @@ pub fn is_member(
         Ok(())
     }
 
+
+    // =========================================================================
+    // ISSUE #479: Contribution Proof Verification
+    // =========================================================================
+
+    /// Enables or disables contribution proof requirement for a group.
+    /// Only the group creator can call this while the group is Pending.
+    pub fn set_contribution_proof_required(
+        env: Env,
+        group_id: u64,
+        required: bool,
+    ) -> Result<(), StellarSaveError> {
+        let group_key = StorageKeyBuilder::group_data(group_id);
+        let mut group = env
+            .storage()
+            .persistent()
+            .get::<_, Group>(&group_key)
+            .ok_or(StellarSaveError::GroupNotFound)?;
+
+        group.creator.require_auth();
+
+        if group.status != GroupStatus::Pending {
+            return Err(StellarSaveError::InvalidState);
+        }
+
+        group.require_contribution_proof = required;
+        env.storage().persistent().set(&group_key, &group);
+        Ok(())
+    }
+
+    /// Verifies a contribution proof for a member.
+    ///
+    /// The proof is the member's own authorization — the member must sign the
+    /// transaction, which Soroban enforces via `require_auth`. This records the
+    /// verification so `contribute_with_proof` can confirm it was done.
+    ///
+    /// # Arguments
+    /// * `group_id` - ID of the group
+    /// * `member`   - Address of the contributing member (must sign)
+    /// * `cycle`    - Cycle number the proof is for
+    pub fn verify_contribution_proof(
+        env: Env,
+        group_id: u64,
+        member: Address,
+        cycle: u32,
+    ) -> Result<(), StellarSaveError> {
+        member.require_auth();
+
+        let group_key = StorageKeyBuilder::group_data(group_id);
+        let group = env
+            .storage()
+            .persistent()
+            .get::<_, Group>(&group_key)
+            .ok_or(StellarSaveError::GroupNotFound)?;
+
+        if !group.require_contribution_proof {
+            return Err(StellarSaveError::InvalidState);
+        }
+
+        // Verify member belongs to the group
+        let member_key = StorageKeyBuilder::member_profile(group_id, member.clone());
+        if !env.storage().persistent().has(&member_key) {
+            return Err(StellarSaveError::NotMember);
+        }
+
+        let proof_key =
+            StorageKeyBuilder::contribution_proof_verified(group_id, cycle, member.clone());
+        env.storage().persistent().set(&proof_key, &true);
+
+        let timestamp = env.ledger().timestamp();
+        EventEmitter::emit_contribution_verified(&env, group_id, member, cycle, timestamp);
+
+        Ok(())
+    }
+
+    /// Records a contribution for a group that requires proof verification.
+    ///
+    /// The member must have called `verify_contribution_proof` for this cycle
+    /// before calling this function.
+    pub fn contribute_with_proof(
+        env: Env,
+        group_id: u64,
+        member: Address,
+        amount: i128,
+    ) -> Result<(), StellarSaveError> {
+        member.require_auth();
+
+        let group_key = StorageKeyBuilder::group_data(group_id);
+        let group = env
+            .storage()
+            .persistent()
+            .get::<_, Group>(&group_key)
+            .ok_or(StellarSaveError::GroupNotFound)?;
+
+        if group.status != GroupStatus::Active {
+            return Err(StellarSaveError::InvalidState);
+        }
+
+        if amount != group.contribution_amount {
+            return Err(StellarSaveError::InvalidAmount);
+        }
+
+        // Verify member belongs to the group
+        let member_key = StorageKeyBuilder::member_profile(group_id, member.clone());
+        if !env.storage().persistent().has(&member_key) {
+            return Err(StellarSaveError::NotMember);
+        }
+
+        // If proof is required, check it was verified
+        if group.require_contribution_proof {
+            let proof_key = StorageKeyBuilder::contribution_proof_verified(
+                group_id,
+                group.current_cycle,
+                member.clone(),
+            );
+            if !env.storage().persistent().get::<_, bool>(&proof_key).unwrap_or(false) {
+                return Err(StellarSaveError::Unauthorized);
+            }
+        }
+
+        let timestamp = env.ledger().timestamp();
+        Self::record_contribution(&env, group_id, group.current_cycle, member.clone(), amount, timestamp)?;
+
+        let cycle_total_key =
+            StorageKeyBuilder::contribution_cycle_total(group_id, group.current_cycle);
+        let cycle_total: i128 = env
+            .storage()
+            .persistent()
+            .get(&cycle_total_key)
+            .unwrap_or(0);
+
+        EventEmitter::emit_contribution_made(
+            &env,
+            group_id,
+            member,
+            amount,
+            group.current_cycle,
+            cycle_total,
+            timestamp,
+        );
+
+        Ok(())
+    }
+
+    // =========================================================================
+    // ISSUE #480: Dynamic Contribution Amounts
+    // =========================================================================
+
+    /// Enables or disables dynamic contribution amounts for a group.
+    /// Only the group creator can call this while the group is Pending.
+    pub fn set_dynamic_contributions(
+        env: Env,
+        group_id: u64,
+        allowed: bool,
+    ) -> Result<(), StellarSaveError> {
+        let group_key = StorageKeyBuilder::group_data(group_id);
+        let mut group = env
+            .storage()
+            .persistent()
+            .get::<_, Group>(&group_key)
+            .ok_or(StellarSaveError::GroupNotFound)?;
+
+        group.creator.require_auth();
+
+        if group.status != GroupStatus::Pending {
+            return Err(StellarSaveError::InvalidState);
+        }
+
+        group.allow_dynamic_contributions = allowed;
+        env.storage().persistent().set(&group_key, &group);
+        Ok(())
+    }
+
+    /// Proposes a new contribution amount for the next cycle.
+    /// Only the group creator can propose; the group must allow dynamic contributions.
+    pub fn propose_contribution_change(
+        env: Env,
+        group_id: u64,
+        new_amount: i128,
+    ) -> Result<(), StellarSaveError> {
+        let group_key = StorageKeyBuilder::group_data(group_id);
+        let group = env
+            .storage()
+            .persistent()
+            .get::<_, Group>(&group_key)
+            .ok_or(StellarSaveError::GroupNotFound)?;
+
+        group.creator.require_auth();
+
+        if !group.allow_dynamic_contributions {
+            return Err(StellarSaveError::InvalidState);
+        }
+
+        if group.status != GroupStatus::Active {
+            return Err(StellarSaveError::InvalidState);
+        }
+
+        if new_amount <= 0 {
+            return Err(StellarSaveError::InvalidAmount);
+        }
+
+        // Store the proposal and reset votes
+        let proposal_key = StorageKeyBuilder::contribution_pending_amount(group_id);
+        env.storage().persistent().set(&proposal_key, &new_amount);
+
+        let vote_key = StorageKeyBuilder::contribution_amount_vote_count(group_id);
+        env.storage().persistent().set(&vote_key, &0u32);
+
+        let timestamp = env.ledger().timestamp();
+        EventEmitter::emit_contribution_amount_proposed(
+            &env,
+            group_id,
+            group.creator,
+            group.contribution_amount,
+            new_amount,
+            timestamp,
+        );
+
+        Ok(())
+    }
+
+    /// Casts a member's vote to approve the pending contribution amount change.
+    /// When a majority (> 50%) of members approve, the change is applied immediately.
+    pub fn vote_contribution_change(
+        env: Env,
+        group_id: u64,
+        member: Address,
+    ) -> Result<(), StellarSaveError> {
+        member.require_auth();
+
+        let group_key = StorageKeyBuilder::group_data(group_id);
+        let mut group = env
+            .storage()
+            .persistent()
+            .get::<_, Group>(&group_key)
+            .ok_or(StellarSaveError::GroupNotFound)?;
+
+        if !group.allow_dynamic_contributions {
+            return Err(StellarSaveError::InvalidState);
+        }
+
+        // Verify member belongs to the group
+        let member_key = StorageKeyBuilder::member_profile(group_id, member.clone());
+        if !env.storage().persistent().has(&member_key) {
+            return Err(StellarSaveError::NotMember);
+        }
+
+        // Check there is a pending proposal
+        let proposal_key = StorageKeyBuilder::contribution_pending_amount(group_id);
+        let new_amount: i128 = env
+            .storage()
+            .persistent()
+            .get(&proposal_key)
+            .ok_or(StellarSaveError::InvalidState)?;
+
+        // Prevent double voting
+        let member_vote_key = StorageKeyBuilder::contribution_member_vote(group_id, member.clone());
+        if env.storage().persistent().has(&member_vote_key) {
+            return Err(StellarSaveError::AlreadyContributed);
+        }
+        env.storage().persistent().set(&member_vote_key, &true);
+
+        // Increment vote count
+        let vote_key = StorageKeyBuilder::contribution_amount_vote_count(group_id);
+        let vote_count: u32 = env.storage().persistent().get(&vote_key).unwrap_or(0);
+        let new_vote_count = vote_count.checked_add(1).ok_or(StellarSaveError::Overflow)?;
+        env.storage().persistent().set(&vote_key, &new_vote_count);
+
+        // Apply change if majority reached (> 50% of members)
+        let majority = group.member_count / 2 + 1;
+        if new_vote_count >= majority {
+            let old_amount = group.contribution_amount;
+            group.contribution_amount = new_amount;
+            env.storage().persistent().set(&group_key, &group);
+
+            // Clear proposal and votes
+            env.storage().persistent().remove(&proposal_key);
+            env.storage().persistent().remove(&vote_key);
+
+            let timestamp = env.ledger().timestamp();
+            EventEmitter::emit_contribution_amount_changed(
+                &env,
+                group_id,
+                old_amount,
+                new_amount,
+                group.current_cycle + 1,
+                timestamp,
+            );
+        }
+
+        Ok(())
+    }
+
+    // =========================================================================
+    // ISSUE #481: Group Analytics Functions
+    // =========================================================================
+
+    /// Returns statistical insights about a group's performance.
+    ///
+    /// # Returns
+    /// A tuple of:
+    /// - `completion_rate`: percentage of cycles completed (0–100)
+    /// - `total_contributions`: total amount contributed across all cycles
+    /// - `total_distributed`: total amount paid out
+    /// - `active_members`: current member count
+    /// - `tvl`: total value locked (contributions not yet paid out)
+    pub fn get_group_statistics(
+        env: Env,
+        group_id: u64,
+    ) -> Result<(u32, i128, i128, u32, i128), StellarSaveError> {
+        let group_key = StorageKeyBuilder::group_data(group_id);
+        let group = env
+            .storage()
+            .persistent()
+            .get::<_, Group>(&group_key)
+            .ok_or(StellarSaveError::GroupNotFound)?;
+
+        // Completion rate: cycles done / max cycles * 100
+        let completion_rate = if group.max_members > 0 {
+            (group.current_cycle * 100) / group.max_members
+        } else {
+            0
+        };
+
+        // Sum contributions across all completed cycles
+        let mut total_contributions: i128 = 0;
+        for cycle in 0..group.current_cycle {
+            let total_key = StorageKeyBuilder::contribution_cycle_total(group_id, cycle);
+            let cycle_total: i128 = env.storage().persistent().get(&total_key).unwrap_or(0);
+            total_contributions = total_contributions.saturating_add(cycle_total);
+        }
+
+        // Total distributed = cycles completed * pool amount per cycle
+        let total_distributed: i128 =
+            (group.current_cycle as i128) * group.total_pool_amount();
+
+        // TVL = contributions received but not yet paid out
+        let tvl = total_contributions.saturating_sub(total_distributed);
+
+        Ok((
+            completion_rate,
+            total_contributions,
+            total_distributed,
+            group.member_count,
+            tvl,
+        ))
+    }
+
+    /// Returns statistics for an individual member within a group.
+    ///
+    /// # Returns
+    /// A tuple of:
+    /// - `cycles_contributed`: number of cycles the member contributed in
+    /// - `total_contributed`: total amount contributed by the member
+    /// - `on_time_rate`: percentage of cycles contributed on time (0–100, approximated as contributed/total)
+    /// - `has_received_payout`: whether the member has received their payout
+    pub fn get_member_statistics(
+        env: Env,
+        group_id: u64,
+        member: Address,
+    ) -> Result<(u32, i128, u32, bool), StellarSaveError> {
+
     // ─── Penalty System ───────────────────────────────────────────────────────
 
     /// Applies a penalty to a member who missed a contribution deadline.
@@ -2897,6 +3259,7 @@ pub fn is_member(
     ) -> Result<(), StellarSaveError> {
         caller.require_auth();
 
+
         let group_key = StorageKeyBuilder::group_data(group_id);
         let group = env
             .storage()
@@ -2904,12 +3267,55 @@ pub fn is_member(
             .get::<_, Group>(&group_key)
             .ok_or(StellarSaveError::GroupNotFound)?;
 
+
+        // Verify member belongs to the group
+        let member_key = StorageKeyBuilder::member_profile(group_id, member.clone());
+        if !env.storage().persistent().has(&member_key) {
+            return Err(StellarSaveError::NotMember);
+        }
+
+        let mut cycles_contributed: u32 = 0;
+        let mut total_contributed: i128 = 0;
+
+        for cycle in 0..group.current_cycle {
+            let contrib_key =
+                StorageKeyBuilder::contribution_individual(group_id, cycle, member.clone());
+            if let Some(record) =
+                env.storage().persistent().get::<_, ContributionRecord>(&contrib_key)
+            {
+                cycles_contributed += 1;
+                total_contributed = total_contributed.saturating_add(record.amount);
+            }
+        }
+
+        // On-time rate: contributed cycles / total cycles so far * 100
+        let on_time_rate = if group.current_cycle > 0 {
+            (cycles_contributed * 100) / group.current_cycle
+        } else {
+            100 // No cycles yet — considered 100%
+        };
+
+        // Check payout received
+        let mut received_payout = false;
+        for cycle in 0..=group.current_cycle {
+            let recipient_key = StorageKeyBuilder::payout_recipient(group_id, cycle);
+            if let Some(recipient) = env.storage().persistent().get::<_, Address>(&recipient_key) {
+                if recipient == member {
+                    received_payout = true;
+                    break;
+                }
+            }
+        }
+
+        Ok((cycles_contributed, total_contributed, on_time_rate, received_payout))
+
         if group.creator != caller {
             return Err(StellarSaveError::Unauthorized);
         }
 
         penalty::set_penalty_config(&env, group_id, config);
         Ok(())
+
     }
 }
 
@@ -9066,6 +9472,370 @@ mod tests {
         assert_eq!(GroupStatus::from_u32(5), None);
     }
 
+
+    // =========================================================================
+    // Tests for #479: Contribution Proof Verification
+    // =========================================================================
+
+    fn setup_active_group_with_member(
+        env: &Env,
+        client: &StellarSaveContractClient,
+    ) -> (u64, Address, Address) {
+        let creator = Address::generate(env);
+        let member = Address::generate(env);
+
+        let group_id = client.create_group(&creator, &100, &3600, &5);
+
+        // Manually set group to Active and store member profile
+        let group_key = StorageKeyBuilder::group_data(group_id);
+        let mut group = env
+            .storage()
+            .persistent()
+            .get::<_, Group>(&group_key)
+            .unwrap();
+        group.status = GroupStatus::Active;
+        group.member_count = 1;
+        env.storage().persistent().set(&group_key, &group);
+
+        let member_profile = MemberProfile {
+            address: member.clone(),
+            group_id,
+            payout_position: 0,
+            joined_at: env.ledger().timestamp(),
+        };
+        env.storage().persistent().set(
+            &StorageKeyBuilder::member_profile(group_id, member.clone()),
+            &member_profile,
+        );
+
+        (group_id, creator, member)
+    }
+
+    #[test]
+    fn test_set_contribution_proof_required() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        let creator = Address::generate(&env);
+
+        let group_id = client.create_group(&creator, &100, &3600, &5);
+
+        // Enable proof requirement
+        client.set_contribution_proof_required(&group_id, &true);
+
+        let group = client.get_group(&group_id);
+        assert!(group.require_contribution_proof);
+
+        // Disable it
+        client.set_contribution_proof_required(&group_id, &false);
+        let group = client.get_group(&group_id);
+        assert!(!group.require_contribution_proof);
+    }
+
+    #[test]
+    fn test_verify_contribution_proof_success() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+
+        let (group_id, _creator, member) = setup_active_group_with_member(&env, &client);
+
+        // Enable proof requirement (group is Pending after create_group)
+        let group_key = StorageKeyBuilder::group_data(group_id);
+        let mut group = env
+            .storage()
+            .persistent()
+            .get::<_, Group>(&group_key)
+            .unwrap();
+        group.status = GroupStatus::Pending;
+        group.require_contribution_proof = true;
+        env.storage().persistent().set(&group_key, &group);
+
+        // Set back to Active for verify call
+        group.status = GroupStatus::Active;
+        env.storage().persistent().set(&group_key, &group);
+
+        client.verify_contribution_proof(&group_id, &member, &0);
+
+        // Proof key should be set
+        let proof_key = StorageKeyBuilder::contribution_proof_verified(group_id, 0, member.clone());
+        let verified: bool = env.storage().persistent().get(&proof_key).unwrap_or(false);
+        assert!(verified);
+    }
+
+    #[test]
+    fn test_contribute_with_proof_requires_verification() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+
+        let (group_id, _creator, member) = setup_active_group_with_member(&env, &client);
+
+        // Enable proof requirement on the active group
+        let group_key = StorageKeyBuilder::group_data(group_id);
+        let mut group = env
+            .storage()
+            .persistent()
+            .get::<_, Group>(&group_key)
+            .unwrap();
+        group.require_contribution_proof = true;
+        env.storage().persistent().set(&group_key, &group);
+
+        // Attempt to contribute without proof — should fail with Unauthorized
+        let result = client.try_contribute_with_proof(&group_id, &member, &100);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_contribute_with_proof_success() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+
+        let (group_id, _creator, member) = setup_active_group_with_member(&env, &client);
+
+        // Enable proof requirement
+        let group_key = StorageKeyBuilder::group_data(group_id);
+        let mut group = env
+            .storage()
+            .persistent()
+            .get::<_, Group>(&group_key)
+            .unwrap();
+        group.require_contribution_proof = true;
+        env.storage().persistent().set(&group_key, &group);
+
+        // Verify proof first
+        client.verify_contribution_proof(&group_id, &member, &0);
+
+        // Now contribute — should succeed
+        client.contribute_with_proof(&group_id, &member, &100);
+
+        // Contribution record should exist
+        let contrib_key = StorageKeyBuilder::contribution_individual(group_id, 0, member.clone());
+        assert!(env.storage().persistent().has(&contrib_key));
+    }
+
+    // =========================================================================
+    // Tests for #480: Dynamic Contribution Amounts
+    // =========================================================================
+
+    #[test]
+    fn test_set_dynamic_contributions() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        let creator = Address::generate(&env);
+
+        let group_id = client.create_group(&creator, &100, &3600, &5);
+
+        client.set_dynamic_contributions(&group_id, &true);
+        let group = client.get_group(&group_id);
+        assert!(group.allow_dynamic_contributions);
+    }
+
+    #[test]
+    fn test_propose_contribution_change() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        let creator = Address::generate(&env);
+
+        let group_id = client.create_group(&creator, &100, &3600, &5);
+
+        // Enable dynamic contributions and set group to Active
+        let group_key = StorageKeyBuilder::group_data(group_id);
+        let mut group = env
+            .storage()
+            .persistent()
+            .get::<_, Group>(&group_key)
+            .unwrap();
+        group.allow_dynamic_contributions = true;
+        group.status = GroupStatus::Active;
+        env.storage().persistent().set(&group_key, &group);
+
+        client.propose_contribution_change(&group_id, &200);
+
+        // Proposal should be stored
+        let proposal_key = StorageKeyBuilder::contribution_pending_amount(group_id);
+        let proposed: i128 = env.storage().persistent().get(&proposal_key).unwrap();
+        assert_eq!(proposed, 200);
+    }
+
+    #[test]
+    fn test_vote_contribution_change_applies_on_majority() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        let creator = Address::generate(&env);
+        let member1 = Address::generate(&env);
+        let member2 = Address::generate(&env);
+
+        let group_id = client.create_group(&creator, &100, &3600, &5);
+
+        // Set up group with 3 members, dynamic contributions enabled, Active status
+        let group_key = StorageKeyBuilder::group_data(group_id);
+        let mut group = env
+            .storage()
+            .persistent()
+            .get::<_, Group>(&group_key)
+            .unwrap();
+        group.allow_dynamic_contributions = true;
+        group.status = GroupStatus::Active;
+        group.member_count = 3;
+        env.storage().persistent().set(&group_key, &group);
+
+        // Store member profiles
+        for (i, m) in [creator.clone(), member1.clone(), member2.clone()].iter().enumerate() {
+            let profile = MemberProfile {
+                address: m.clone(),
+                group_id,
+                payout_position: i as u32,
+                joined_at: 0,
+            };
+            env.storage().persistent().set(
+                &StorageKeyBuilder::member_profile(group_id, m.clone()),
+                &profile,
+            );
+        }
+
+        // Propose a change
+        client.propose_contribution_change(&group_id, &200);
+
+        // Two votes = majority of 3 (need 2)
+        client.vote_contribution_change(&group_id, &creator);
+        client.vote_contribution_change(&group_id, &member1);
+
+        // Amount should now be updated
+        let updated_group = client.get_group(&group_id);
+        assert_eq!(updated_group.contribution_amount, 200);
+    }
+
+    // =========================================================================
+    // Tests for #481: Group Analytics Functions
+    // =========================================================================
+
+    #[test]
+    fn test_get_group_statistics_empty_group() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        let creator = Address::generate(&env);
+
+        let group_id = client.create_group(&creator, &100, &3600, &5);
+
+        let (completion_rate, total_contributions, total_distributed, active_members, tvl) =
+            client.get_group_statistics(&group_id);
+
+        assert_eq!(completion_rate, 0);
+        assert_eq!(total_contributions, 0);
+        assert_eq!(total_distributed, 0);
+        assert_eq!(tvl, 0);
+        let _ = active_members; // member count may vary
+    }
+
+    #[test]
+    fn test_get_group_statistics_with_cycles() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        let creator = Address::generate(&env);
+
+        let group_id = client.create_group(&creator, &100, &3600, &4);
+
+        // Simulate 2 completed cycles with contributions
+        let group_key = StorageKeyBuilder::group_data(group_id);
+        let mut group = env
+            .storage()
+            .persistent()
+            .get::<_, Group>(&group_key)
+            .unwrap();
+        group.current_cycle = 2;
+        group.member_count = 4;
+        env.storage().persistent().set(&group_key, &group);
+
+        // Store cycle totals: 4 members * 100 = 400 per cycle
+        env.storage().persistent().set(
+            &StorageKeyBuilder::contribution_cycle_total(group_id, 0),
+            &400i128,
+        );
+        env.storage().persistent().set(
+            &StorageKeyBuilder::contribution_cycle_total(group_id, 1),
+            &400i128,
+        );
+
+        let (completion_rate, total_contributions, total_distributed, active_members, tvl) =
+            client.get_group_statistics(&group_id);
+
+        assert_eq!(completion_rate, 50); // 2/4 cycles = 50%
+        assert_eq!(total_contributions, 800); // 400 * 2
+        assert_eq!(total_distributed, 800); // 2 cycles * (100 * 4)
+        assert_eq!(tvl, 0); // all distributed
+        assert_eq!(active_members, 4);
+    }
+
+    #[test]
+    fn test_get_member_statistics() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        let creator = Address::generate(&env);
+        let member = Address::generate(&env);
+
+        let group_id = client.create_group(&creator, &100, &3600, &4);
+
+        // Set up group at cycle 2 with member
+        let group_key = StorageKeyBuilder::group_data(group_id);
+        let mut group = env
+            .storage()
+            .persistent()
+            .get::<_, Group>(&group_key)
+            .unwrap();
+        group.current_cycle = 2;
+        group.member_count = 2;
+        env.storage().persistent().set(&group_key, &group);
+
+        let member_profile = MemberProfile {
+            address: member.clone(),
+            group_id,
+            payout_position: 0,
+            joined_at: 0,
+        };
+        env.storage().persistent().set(
+            &StorageKeyBuilder::member_profile(group_id, member.clone()),
+            &member_profile,
+        );
+
+        // Member contributed in cycle 0 only
+        let contrib = ContributionRecord::new(member.clone(), group_id, 0, 100, 12345);
+        env.storage().persistent().set(
+            &StorageKeyBuilder::contribution_individual(group_id, 0, member.clone()),
+            &contrib,
+        );
+
+        let (cycles_contributed, total_contributed, on_time_rate, received_payout) =
+            client.get_member_statistics(&group_id, &member);
+
+        assert_eq!(cycles_contributed, 1);
+        assert_eq!(total_contributed, 100);
+        assert_eq!(on_time_rate, 50); // 1/2 cycles = 50%
+        assert!(!received_payout);
+    }
+
+    #[test]
+    fn test_get_member_statistics_with_payout() {
+        let env = Env::default();
+        env.mock_all_auths();
+
     // ── Grace period tests ────────────────────────────────────────────────────
 
     /// Helper: create a group with a grace period, store it, and return (group_id, client).
@@ -9210,10 +9980,54 @@ mod tests {
         let cycle_duration: u64 = 604800;
         let grace: u64 = 3600;
 
+
         let contract_id = env.register(StellarSaveContract, ());
         let client = StellarSaveContractClient::new(&env, &contract_id);
         let creator = Address::generate(&env);
         let member = Address::generate(&env);
+
+
+        let group_id = client.create_group(&creator, &100, &3600, &2);
+
+        // Set up group at cycle 1 with member who received payout
+        let group_key = StorageKeyBuilder::group_data(group_id);
+        let mut group = env
+            .storage()
+            .persistent()
+            .get::<_, Group>(&group_key)
+            .unwrap();
+        group.current_cycle = 1;
+        group.member_count = 2;
+        env.storage().persistent().set(&group_key, &group);
+
+        let member_profile = MemberProfile {
+            address: member.clone(),
+            group_id,
+            payout_position: 0,
+            joined_at: 0,
+        };
+        env.storage().persistent().set(
+            &StorageKeyBuilder::member_profile(group_id, member.clone()),
+            &member_profile,
+        );
+
+        // Member contributed in cycle 0
+        let contrib = ContributionRecord::new(member.clone(), group_id, 0, 100, 12345);
+        env.storage().persistent().set(
+            &StorageKeyBuilder::contribution_individual(group_id, 0, member.clone()),
+            &contrib,
+        );
+
+        // Member received payout in cycle 0
+        env.storage().persistent().set(
+            &StorageKeyBuilder::payout_recipient(group_id, 0),
+            &member,
+        );
+
+        let (_cycles, _total, _rate, received_payout) =
+            client.get_member_statistics(&group_id, &member);
+
+        assert!(received_payout);
 
         env.mock_all_auths();
         env.ledger().set_timestamp(started_at);
@@ -9246,5 +10060,6 @@ mod tests {
         // Member contributed — should NOT appear in missed list
         let missed = client.get_missed_contributions(&group_id, &0).unwrap();
         assert_eq!(missed.len(), 0);
+
     }
 }

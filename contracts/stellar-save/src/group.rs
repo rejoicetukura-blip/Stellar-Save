@@ -192,10 +192,20 @@ pub struct Group {
     /// Only set when started is true.
     pub started_at: u64,
 
+
+    /// Whether members must provide a signed proof when contributing.
+    /// If true, contributions require an additional signature verification step.
+    pub require_contribution_proof: bool,
+
+    /// Whether the group allows the contribution amount to be changed between cycles.
+    /// If true, the creator can propose a new amount and members can vote on it.
+    pub allow_dynamic_contributions: bool,
+
     /// Grace period in seconds after the cycle deadline before a member is
     /// considered to have missed their contribution.
     /// Maximum allowed value is 604800 (7 days). Defaults to 0 (no grace period).
     pub grace_period_seconds: u64,
+
 }
 
 impl Group {
@@ -295,7 +305,12 @@ impl Group {
             created_at,
             started: false,
             started_at: 0,
+
+            require_contribution_proof: false,
+            allow_dynamic_contributions: false,
+
             grace_period_seconds,
+
         }
     }
 

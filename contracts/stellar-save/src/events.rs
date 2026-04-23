@@ -93,7 +93,43 @@ pub struct ContractUnpaused {
     pub timestamp: u64,
 }
 
+
+
+/// Event emitted when a contribution proof is verified (#479).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ContributionVerified {
+    pub group_id: u64,
+    pub contributor: Address,
+    pub cycle: u32,
+    pub verified_at: u64,
+}
+
+/// Event emitted when a contribution amount change is proposed (#480).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ContributionAmountProposed {
+    pub group_id: u64,
+    pub proposed_by: Address,
+    pub old_amount: i128,
+    pub new_amount: i128,
+    pub proposed_at: u64,
+}
+
+/// Event emitted when a contribution amount change is approved and applied (#480).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ContributionAmountChanged {
+    pub group_id: u64,
+    pub old_amount: i128,
+    pub new_amount: i128,
+    pub effective_cycle: u32,
+    pub changed_at: u64,
+
+/// Event emitted when a specific group is paused by its creator.
+
 /// Event emitted when a cycle starts.
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CycleStarted {
@@ -107,8 +143,14 @@ pub struct CycleStarted {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CycleEnded {
     pub group_id: u64,
+
+    pub unpaused_by: Address,
+    pub unpaused_at: u64,
+
+
     pub cycle_id: u32,
     pub ended_at: u64,
+
 }
 
 /// Utility functions for emitting events.
@@ -272,6 +314,62 @@ impl EventEmitter {
         env.events().publish(("contract_unpaused",), event);
     }
 
+
+
+    pub fn emit_contribution_verified(
+        env: &Env,
+        group_id: u64,
+        contributor: Address,
+        cycle: u32,
+        verified_at: u64,
+    ) {
+        let event = ContributionVerified {
+            group_id,
+            contributor,
+            cycle,
+            verified_at,
+        };
+        env.events().publish(("contribution_verified",), event);
+    }
+
+    pub fn emit_contribution_amount_proposed(
+        env: &Env,
+        group_id: u64,
+        proposed_by: Address,
+        old_amount: i128,
+        new_amount: i128,
+        proposed_at: u64,
+    ) {
+        let event = ContributionAmountProposed {
+            group_id,
+            proposed_by,
+            old_amount,
+            new_amount,
+            proposed_at,
+        };
+        env.events().publish(("contribution_amount_proposed",), event);
+    }
+
+    pub fn emit_contribution_amount_changed(
+        env: &Env,
+        group_id: u64,
+        old_amount: i128,
+        new_amount: i128,
+        effective_cycle: u32,
+        changed_at: u64,
+    ) {
+        let event = ContributionAmountChanged {
+            group_id,
+            old_amount,
+            new_amount,
+            effective_cycle,
+            changed_at,
+        };
+        env.events().publish(("contribution_amount_changed",), event);
+
+    pub fn emit_group_paused(env: &Env, group_id: u64, paused_by: Address, paused_at: u64) {
+        let event = GroupPaused {
+
     pub fn emit_penalty_applied(
         env: &Env,
         group_id: u64,
@@ -280,6 +378,7 @@ impl EventEmitter {
         cycle_id: u32,
     ) {
         let event = PenaltyApplied {
+
             group_id,
             member,
             amount,
@@ -301,7 +400,12 @@ impl EventEmitter {
             cycle_id,
             recovered_at: env.ledger().timestamp(),
         };
+
+        env.events().publish(("group_unpaused",), event);
+
+
         env.events().publish(("penalty_recovered",), event);
+
     }
 }
 
