@@ -48,7 +48,7 @@ pub use storage_optimization::{
 pub use storage_benchmark::{BenchmarkResult, BenchmarkScenario, StorageBenchmark};
 #[cfg(test)]
 use soroban_sdk::testutils::{Events, Ledger};
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol, Vec};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, Symbol, Vec};
 pub use status::StatusError;
 pub use storage::{StorageKey, StorageKeyBuilder};
 
@@ -10650,5 +10650,115 @@ mod tests {
             .get::<_, Group>(&group_key)
             .unwrap();
         assert_eq!(updated_group.description, String::new());
+    }
+
+    // ── Dispute lifecycle tests ──────────────────────────────────────────────
+
+    fn setup_group_with_member(env: &Env) -> (u64, Address, Address) {
+        let group_id = 1u64;
+        let creator = Address::generate(env);
+        let member = Address::generate(env);
+        let group = Group::new(group_id, creator.clone(), 10_000_000, 3600, 5, 2, 0);
+        env.storage()
+            .persistent()
+            .set(&StorageKeyBuilder::group_data(group_id), &group);
+        let mut members = Vec::new(env);
+        members.push_back(member.clone());
+        env.storage()
+            .persistent()
+            .set(&StorageKeyBuilder::group_members(group_id), &members);
+        (group_id, creator, member)
+    }
+
+    #[test]
+    fn test_raise_dispute_sets_flag() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        let (group_id, _creator, member) = setup_group_with_member(&env);
+
+        client.raise_dispute(
+            &group_id,
+            &member,
+            &String::from_str(&env, "funds missing"),
+        );
+
+        let group: Group = env
+            .storage()
+            .persistent()
+            .get(&StorageKeyBuilder::group_data(group_id))
+            .unwrap();
+        assert!(group.dispute_active);
+    }
+
+    #[test]
+    fn test_resolve_dispute_clears_flag() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        let (group_id, creator, member) = setup_group_with_member(&env);
+
+        client.raise_dispute(&group_id, &member, &String::from_str(&env, "issue"));
+        client.resolve_dispute(&group_id, &creator, &String::from_str(&env, "resolved"));
+
+        let group: Group = env
+            .storage()
+            .persistent()
+            .get(&StorageKeyBuilder::group_data(group_id))
+            .unwrap();
+        assert!(!group.dispute_active);
+    }
+
+    #[test]
+    #[should_panic(expected = "Status(ContractError(2002))")]
+    fn test_raise_dispute_non_member_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        let (group_id, _creator, _member) = setup_group_with_member(&env);
+        let outsider = Address::generate(&env);
+
+        client.raise_dispute(&group_id, &outsider, &String::from_str(&env, "bad actor"));
+    }
+
+    #[test]
+    #[should_panic(expected = "Status(ContractError(6001))")]
+    fn test_raise_dispute_twice_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        let (group_id, _creator, member) = setup_group_with_member(&env);
+
+        client.raise_dispute(&group_id, &member, &String::from_str(&env, "first"));
+        client.raise_dispute(&group_id, &member, &String::from_str(&env, "second"));
+    }
+
+    #[test]
+    #[should_panic(expected = "Status(ContractError(2003))")]
+    fn test_resolve_dispute_non_creator_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        let (group_id, _creator, member) = setup_group_with_member(&env);
+
+        client.raise_dispute(&group_id, &member, &String::from_str(&env, "issue"));
+        client.resolve_dispute(&group_id, &member, &String::from_str(&env, "self-resolve"));
+    }
+
+    #[test]
+    #[should_panic(expected = "Status(ContractError(1003))")]
+    fn test_resolve_dispute_no_active_dispute_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        let (group_id, creator, _member) = setup_group_with_member(&env);
+
+        client.resolve_dispute(&group_id, &creator, &String::from_str(&env, "nothing to resolve"));
     }
 }

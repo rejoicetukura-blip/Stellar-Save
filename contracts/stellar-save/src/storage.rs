@@ -64,6 +64,9 @@ pub enum GroupKey {
     /// Group status: GROUP_STATUS_{id}
     /// Stores the current GroupStatus for quick status checks.
     Status(u64),
+
+    /// Dispute reason string: GROUP_DISPUTE_REASON_{id}
+    DisputeReason(u64),
 }
 
 /// Storage keys for member-related data.
@@ -218,6 +221,10 @@ impl StorageKeyBuilder {
     /// Creates a key for storing group status.
     pub fn group_status(group_id: u64) -> StorageKey {
         StorageKey::Group(GroupKey::Status(group_id))
+    }
+
+    pub fn group_dispute_reason(group_id: u64) -> StorageKey {
+        StorageKey::Group(GroupKey::DisputeReason(group_id))
     }
 
     // Member key builders

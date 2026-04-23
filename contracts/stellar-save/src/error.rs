@@ -157,6 +157,9 @@ impl StellarSaveError {
             StellarSaveError::CycleDeadlineExpired => {
                 "The cycle deadline has passed. Contributions are no longer accepted for this cycle."
             }
+            StellarSaveError::DisputeActive => {
+                "A dispute is active on this group. Contributions and payouts are blocked."
+            }
         }
     }
 

@@ -699,6 +699,11 @@ pub fn execute_payout(env: Env, group_id: u64) -> Result<(), StellarSaveError> {
         return Err(StellarSaveError::InvalidState);
     }
 
+    // Step 2b: Block payout if a dispute is active
+    if group.dispute_active {
+        return Err(StellarSaveError::DisputeActive);
+    }
+
     // Step 3: Check if payout already executed for current cycle
     // This prevents duplicate payouts for the same cycle
     let current_cycle = group.current_cycle;
