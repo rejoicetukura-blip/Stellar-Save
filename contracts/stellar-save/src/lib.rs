@@ -41,6 +41,11 @@ pub use events::*;
 pub use group::{Group, GroupStatus};
 pub use payout::PayoutRecord;
 pub use pool::{PoolCalculator, PoolInfo};
+pub use storage_optimization::{
+    CompactMemberProfile, ContributionBitmap, OptimizedStorageKey, OptimizedStorageKeyBuilder,
+    StorageCostAnalyzer,
+};
+pub use storage_benchmark::{BenchmarkResult, BenchmarkScenario, StorageBenchmark};
 #[cfg(test)]
 use soroban_sdk::testutils::{Events, Ledger};
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol, Vec};
