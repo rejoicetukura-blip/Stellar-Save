@@ -93,6 +93,38 @@ pub struct ContractUnpaused {
     pub timestamp: u64,
 }
 
+/// Event emitted when a contribution proof is verified (#479).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ContributionVerified {
+    pub group_id: u64,
+    pub contributor: Address,
+    pub cycle: u32,
+    pub verified_at: u64,
+}
+
+/// Event emitted when a contribution amount change is proposed (#480).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ContributionAmountProposed {
+    pub group_id: u64,
+    pub proposed_by: Address,
+    pub old_amount: i128,
+    pub new_amount: i128,
+    pub proposed_at: u64,
+}
+
+/// Event emitted when a contribution amount change is approved and applied (#480).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ContributionAmountChanged {
+    pub group_id: u64,
+    pub old_amount: i128,
+    pub new_amount: i128,
+    pub effective_cycle: u32,
+    pub changed_at: u64,
+}
+
 /// Utility functions for emitting events.
 pub struct EventEmitter;
 
@@ -231,6 +263,58 @@ impl EventEmitter {
     pub fn emit_contract_unpaused(env: &Env, admin: Address, timestamp: u64) {
         let event = ContractUnpaused { admin, timestamp };
         env.events().publish(("contract_unpaused",), event);
+    }
+
+    pub fn emit_contribution_verified(
+        env: &Env,
+        group_id: u64,
+        contributor: Address,
+        cycle: u32,
+        verified_at: u64,
+    ) {
+        let event = ContributionVerified {
+            group_id,
+            contributor,
+            cycle,
+            verified_at,
+        };
+        env.events().publish(("contribution_verified",), event);
+    }
+
+    pub fn emit_contribution_amount_proposed(
+        env: &Env,
+        group_id: u64,
+        proposed_by: Address,
+        old_amount: i128,
+        new_amount: i128,
+        proposed_at: u64,
+    ) {
+        let event = ContributionAmountProposed {
+            group_id,
+            proposed_by,
+            old_amount,
+            new_amount,
+            proposed_at,
+        };
+        env.events().publish(("contribution_amount_proposed",), event);
+    }
+
+    pub fn emit_contribution_amount_changed(
+        env: &Env,
+        group_id: u64,
+        old_amount: i128,
+        new_amount: i128,
+        effective_cycle: u32,
+        changed_at: u64,
+    ) {
+        let event = ContributionAmountChanged {
+            group_id,
+            old_amount,
+            new_amount,
+            effective_cycle,
+            changed_at,
+        };
+        env.events().publish(("contribution_amount_changed",), event);
     }
 }
 

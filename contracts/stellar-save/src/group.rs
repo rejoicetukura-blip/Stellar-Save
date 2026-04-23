@@ -191,6 +191,14 @@ pub struct Group {
     /// Used for tracking when the first cycle started.
     /// Only set when started is true.
     pub started_at: u64,
+
+    /// Whether members must provide a signed proof when contributing.
+    /// If true, contributions require an additional signature verification step.
+    pub require_contribution_proof: bool,
+
+    /// Whether the group allows the contribution amount to be changed between cycles.
+    /// If true, the creator can propose a new amount and members can vote on it.
+    pub allow_dynamic_contributions: bool,
 }
 
 impl Group {
@@ -256,6 +264,8 @@ impl Group {
             created_at,
             started: false,
             started_at: 0,
+            require_contribution_proof: false,
+            allow_dynamic_contributions: false,
         }
     }
 
