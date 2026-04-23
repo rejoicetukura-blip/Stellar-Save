@@ -104,8 +104,8 @@ pub struct PayoutScheduleEntry {
 pub enum AssignmentMode {
     /// Sequential assignment based on join order (default)
     Sequential,
-    /// Random assignment using ledger timestamp as seed
-    Random,
+    /// Randomized assignment using Soroban PRNG and ledger seed salting
+    Randomized,
     /// Manual assignment with explicit positions
     Manual(Vec<u32>),
 }
@@ -1158,7 +1158,7 @@ pub fn is_member(
     /// * `env` - Soroban environment
     /// * `group_id` - ID of the group
     /// * `caller` - Address of the caller (must be group creator)
-    /// * `mode` - Assignment mode (Sequential, Random, or Manual)
+    /// * `mode` - Assignment mode (Sequential, Randomized, or Manual)
     ///
     /// # Returns
     /// * `Ok(())` if assignment successful
@@ -1208,13 +1208,17 @@ pub fn is_member(
                 }
                 pos
             }
-            AssignmentMode::Random => {
-                let mut pos = Vec::new(&env);
-                for i in 0..members.len() {
-                    pos.push_back(i);
-                }
+            AssignmentMode::Randomized => {
                 let seed = env.ledger().timestamp();
-                Self::shuffle(&env, &mut pos, seed);
+                let position_order = Self::randomize_payout_order(
+                    env.clone(),
+                    Symbol::new(&env, &group_id.to_string()),
+                    seed,
+                )?;
+                let mut pos = Vec::new(&env);
+                for i in 0..position_order.len() {
+                    pos.push_back(position_order.get(i).unwrap());
+                }
                 pos
             }
             AssignmentMode::Manual(positions) => {
@@ -1372,6 +1376,71 @@ pub fn is_member(
         EventEmitter::emit_payout_executed(&env, group_id, recipient, amount, cycle_number, timestamp);
 
         Ok(())
+    }
+
+    /// Randomizes payout order for a group and stores the resulting ordered address sequence.
+    ///
+    /// # Threat Model
+    /// - Front-running: assignment is gated by a one-time sequence store and is performed before
+    ///   the group enters Active status, preventing repeated re-shuffles to improve a position.
+    /// - Validator manipulation: the PRNG seed is combined with ledger sequence/timestamp and the
+    ///   group identifier, making bias significantly harder under Stellar consensus than a plain
+    ///   timestamp seed.
+    pub fn randomize_payout_order(
+        env: Env,
+        group_id: Symbol,
+        seed: u64,
+    ) -> Result<Vec<u32>, StellarSaveError> {
+        let group_id_str = group_id.to_string();
+        let group_id_u64: u64 = group_id_str
+            .parse()
+            .map_err(|_| StellarSaveError::InvalidState)?;
+
+        let group_key = StorageKeyBuilder::group_data(group_id_u64);
+        env.storage()
+            .persistent()
+            .get::<_, Group>(&group_key)
+            .ok_or(StellarSaveError::GroupNotFound)?;
+
+        let sequence_key = StorageKeyBuilder::payout_sequence(group_id_u64);
+        if env.storage().persistent().has(&sequence_key) {
+            return Err(StellarSaveError::InvalidState);
+        }
+
+        let members_key = StorageKeyBuilder::group_members(group_id_u64);
+        let members: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&members_key)
+            .ok_or(StellarSaveError::GroupNotFound)?;
+
+        let mut positions = Vec::new(&env);
+        for i in 0..members.len() {
+            positions.push_back(i);
+        }
+
+        let prng = env.prng();
+        let prng_seed = prng.u64_in_range(0..u64::MAX);
+        let ledger_salt = env
+            .ledger()
+            .sequence_number()
+            .wrapping_add(env.ledger().timestamp());
+        let salted_seed = seed
+            .wrapping_add(prng_seed)
+            .wrapping_add(ledger_salt)
+            .wrapping_add(group_id_u64);
+
+        Self::shuffle(&env, &mut positions, salted_seed);
+
+        let mut sequence = Vec::new(&env);
+        for i in 0..positions.len() {
+            let position = positions.get(i).unwrap();
+            sequence.push_back(members.get(position).unwrap().clone());
+        }
+
+        env.storage().persistent().set(&sequence_key, &sequence);
+
+        Ok(positions)
     }
 
     fn shuffle(_env: &Env, vec: &mut Vec<u32>, seed: u64) {
@@ -4482,7 +4551,7 @@ mod tests {
 
         // Action: Assign random positions
         env.mock_all_auths();
-        client.assign_payout_positions(&group_id, &creator, &AssignmentMode::Random);
+        client.assign_payout_positions(&group_id, &creator, &AssignmentMode::Randomized);
 
         // Verify: All positions are assigned and unique
         let pos0: u32 = env
@@ -4519,6 +4588,60 @@ mod tests {
         assert_ne!(pos0, pos1);
         assert_ne!(pos0, pos2);
         assert_ne!(pos1, pos2);
+    }
+
+    #[test]
+    fn test_assign_payout_positions_randomized_ten_members_is_not_join_order() {
+        let env = Env::default();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+
+        let creator = Address::generate(&env);
+        let group_id = 1;
+        let group = Group::new(group_id, creator.clone(), 100, 3600, 10, 2, 1000);
+        env.storage()
+            .persistent()
+            .set(&StorageKeyBuilder::group_data(group_id), &group);
+        env.storage().persistent().set(
+            &StorageKeyBuilder::group_status(group_id),
+            &GroupStatus::Pending,
+        );
+
+        let mut members = Vec::new(&env);
+        for _ in 0..10 {
+            let member = Address::generate(&env);
+            members.push_back(member.clone());
+            let profile = MemberProfile {
+                address: member.clone(),
+                group_id,
+                payout_position: 0,
+                joined_at: 1000,
+            };
+            env.storage()
+                .persistent()
+                .set(&StorageKeyBuilder::member_profile(group_id, member), &profile);
+        }
+        env.storage()
+            .persistent()
+            .set(&StorageKeyBuilder::group_members(group_id), &members);
+
+        env.mock_all_auths();
+        client.assign_payout_positions(&group_id, &creator, &AssignmentMode::Randomized);
+
+        let sequence_key = StorageKeyBuilder::payout_sequence(group_id);
+        let sequence: Vec<Address> = env.storage().persistent().get(&sequence_key).unwrap();
+
+        assert_eq!(sequence.len(), 10);
+
+        let mut same_order = true;
+        for i in 0..sequence.len() {
+            if sequence.get(i).unwrap() != members.get(i).unwrap() {
+                same_order = false;
+                break;
+            }
+        }
+
+        assert_eq!(same_order, false);
     }
 
     #[test]

@@ -61,6 +61,10 @@ pub enum GroupKey {
     /// Stores the list of member addresses for efficient member enumeration.
     Members(u64),
 
+    /// Group payout sequence: GROUP_PAYOUT_SEQUENCE_{id}
+    /// Stores the randomized payout order as a vector of addresses.
+    PayoutSequence(u64),
+
     /// Group status: GROUP_STATUS_{id}
     /// Stores the current GroupStatus for quick status checks.
     Status(u64),
@@ -193,6 +197,11 @@ impl StorageKeyBuilder {
     /// Creates a key for storing group member list.
     pub fn group_members(group_id: u64) -> StorageKey {
         StorageKey::Group(GroupKey::Members(group_id))
+    }
+
+    /// Creates a key for storing the randomized payout order sequence.
+    pub fn payout_sequence(group_id: u64) -> StorageKey {
+        StorageKey::Group(GroupKey::PayoutSequence(group_id))
     }
 
     /// Creates a key for storing group status.
