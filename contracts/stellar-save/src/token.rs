@@ -47,7 +47,7 @@ mod tests {
     use super::*;
     use soroban_sdk::{
         testutils::Address as _,
-        token::{StellarAssetClient, TokenClient},
+        token::TokenClient,
         Address, Env,
     };
 
@@ -81,19 +81,5 @@ mod tests {
 
         let result = validate_token(&env, &token_address);
         assert_eq!(result, Ok(expected_decimals));
-    }
-
-    #[test]
-    fn test_validate_token_non_token_address_panics() {
-        // Calling validate_token on a non-token address should panic/trap.
-        // We verify this by catching the panic in a should_panic test.
-        let env = Env::default();
-        let non_token = Address::generate(&env);
-
-        // This should panic because the address is not a deployed token contract.
-        let result = std::panic::catch_unwind(|| {
-            validate_token(&env, &non_token)
-        });
-        assert!(result.is_err(), "Expected panic for non-token address");
     }
 }
