@@ -64,6 +64,10 @@ pub enum StellarSaveError {
     /// Error Code: 3007
     ContributionTooHigh = 3007,
 
+    /// The member's token balance is insufficient for auto-contribution.
+    /// Error Code: 3008
+    InsufficientBalance = 3008,
+
     // Payout-related errors (4000-4999)
     /// The payout operation failed due to insufficient funds or transfer error.
     /// Error Code: 4001
@@ -191,6 +195,9 @@ impl StellarSaveError {
             }
             StellarSaveError::ContributionTooHigh => {
                 "The contribution amount exceeds the configured maximum limit."
+            }
+            StellarSaveError::InsufficientBalance => {
+                "The member's token balance is insufficient to cover the auto-contribution amount."
             }
             StellarSaveError::CycleDeadlineExpired => {
                 "The cycle deadline has passed. Contributions are no longer accepted for this cycle."
@@ -356,6 +363,9 @@ impl ErrorRecoveryStrategy {
             }
             StellarSaveError::ContributionTooHigh => {
                 "Decrease the contribution amount to stay within the configured maximum."
+            }
+            StellarSaveError::InsufficientBalance => {
+                "Ensure your token balance is sufficient to cover the contribution amount before the cycle starts, or disable auto-contribution."
             }
             StellarSaveError::CycleDeadlineExpired => {
                 "The cycle deadline has passed. Contributions are no longer accepted for this cycle."

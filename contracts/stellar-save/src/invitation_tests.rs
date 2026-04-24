@@ -192,6 +192,7 @@ mod tests {
             group_id: 1,
             payout_position: 0,
             joined_at: 0,
+            auto_contribute_enabled: false,
         };
         env.storage()
             .persistent()

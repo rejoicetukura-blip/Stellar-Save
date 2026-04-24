@@ -1172,6 +1172,7 @@ mod tests {
             group_id,
             payout_position: 0,
             joined_at: 1234567890u64,
+            auto_contribute_enabled: false,
         };
 
         // Store the member profile
@@ -1212,6 +1213,7 @@ mod tests {
             group_id: group_id_1,
             payout_position: 0,
             joined_at: 1234567890u64,
+            auto_contribute_enabled: false,
         };
         let member_key_1 = StorageKeyBuilder::member_profile(group_id_1, recipient.clone());
         env.storage().persistent().set(&member_key_1, &member_profile_1);
@@ -1240,6 +1242,7 @@ mod tests {
             group_id,
             payout_position: cycle,
             joined_at: 1234567890u64,
+            auto_contribute_enabled: false,
         };
         let member_key = StorageKeyBuilder::member_profile(group_id, recipient.clone());
         env.storage().persistent().set(&member_key, &member_profile);
@@ -1272,12 +1275,14 @@ mod tests {
             group_id,
             payout_position: 0,
             joined_at: 1234567890u64,
+            auto_contribute_enabled: false,
         };
         let member_profile_2 = MemberProfile {
             address: recipient2.clone(),
             group_id,
             payout_position: 1,
             joined_at: 1234567890u64,
+            auto_contribute_enabled: false,
         };
 
         let member_key_1 = StorageKeyBuilder::member_profile(group_id, recipient1.clone());
