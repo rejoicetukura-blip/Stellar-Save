@@ -118,6 +118,8 @@ function MemberManagementDialog({ open, member, onClose, onRemove }: MemberManag
 }
 
 // ── Main Page ────────────────────────────────────────────────────────────────
+import { usePushNotifications } from '../hooks/usePushNotifications';
+import type { DetailedGroup } from '../utils/groupApi';
 
 /**
  * Group Detail Page — Issue #441
