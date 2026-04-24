@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Stack, Typography } from '@mui/material';
 import { AppCard, AppLayout } from '../ui';
@@ -5,40 +6,39 @@ import { GroupCard } from '../components/GroupCard';
 import { GroupFilters } from '../components/GroupFilters';
 import { GroupList } from '../components/GroupList';
 import { SearchBar } from '../components/SearchBar';
+import { JoinGroupModal } from '../components/JoinGroupModal';
+import { GroupPreview } from '../components/GroupPreview';
+import { ToastProvider } from '../components/Toast/ToastProvider';
+import { useToast } from '../components/Toast/useToast';
 import { Button } from '../components/Button';
 import { useGroups } from '../hooks/useGroups';
 import { ROUTES, buildRoute } from '../routing/constants';
+import type { PublicGroup } from '../types/group';
 import './BrowseGroupsPage.css';
 
-export default function BrowseGroupsPage() {
+function BrowseGroupsContent() {
   const navigate = useNavigate();
+  const { addToast } = useToast();
 
   const {
-    groups,
-    filteredCount,
-    pagination,
-    filters,
-    isLoading,
-    error,
-    hasActiveFilters,
-    setFilters,
-    clearFilters,
-    setPage,
-    setPageSize,
-    refresh,
-  } = useGroups({ initialPageSize: 12 });
+    groups, filteredCount, pagination, filters,
+    isLoading, error, hasActiveFilters,
+    setFilters, clearFilters, setPage, setPageSize, refresh,
+  } = useGroups({ initialPageSize: 10 });
 
-  const handleCreateGroup = () => navigate(ROUTES.GROUP_CREATE);
+  const [previewGroup, setPreviewGroup] = useState<PublicGroup | null>(null);
+  const [joinGroup, setJoinGroup] = useState<PublicGroup | null>(null);
+
+  const handleJoinConfirm = (group: PublicGroup) => {
+    setJoinGroup(null);
+    setPreviewGroup(null);
+    addToast({ message: `Join request sent for "${group.name}"!`, type: 'success', duration: 4000 });
+  };
 
   return (
-    <AppLayout
-      title="Browse Groups"
-      subtitle="Discover and join public savings groups"
-      footerText="Stellar Save - Built for transparent, on-chain savings"
-    >
+    <>
       <AppCard>
         <Stack spacing={2}>
-          {/* aria-live region for error/status announcements */}
           <div aria-live="polite" aria-atomic="true">
             {error && (
               <div className="browse-groups-error" role="alert">
@@ -60,12 +60,8 @@ export default function BrowseGroupsPage() {
                   onSearch={(q) => setFilters({ search: q })}
                   debounceMs={300}
                   loading={isLoading}
-                  aria-label="Search groups"
                 />
-                <GroupFilters
-                  onFilterChange={(f) => setFilters(f)}
-                  initialFilters={filters}
-                />
+                <GroupFilters onFilterChange={(f) => setFilters(f)} initialFilters={filters} />
               </div>
 
               <div aria-busy={isLoading}>
@@ -75,28 +71,29 @@ export default function BrowseGroupsPage() {
                   showSearch={false}
                   showSort={false}
                   pageSize={pagination.pageSize}
-                  pageSizeOptions={[12, 24, 48]}
+                  pageSizeOptions={[10, 20, 50]}
                   showPagination={filteredCount > pagination.pageSize}
                   emptyTitle={hasActiveFilters ? 'No groups found' : 'No groups available'}
                   emptyDescription={
                     hasActiveFilters
-                      ? 'Try adjusting your search or filters to find groups.'
-                      : 'There are no public groups yet. Be the first to create one!'
+                      ? 'Try adjusting your search or filters.'
+                      : 'No public groups yet. Be the first to create one!'
                   }
                   emptyActionLabel={hasActiveFilters ? 'Clear Filters' : 'Create Group'}
-                  onEmptyAction={hasActiveFilters ? clearFilters : handleCreateGroup}
+                  onEmptyAction={hasActiveFilters ? clearFilters : () => navigate(ROUTES.GROUP_CREATE)}
                   renderGroupItem={(group) => (
                     <GroupCard
                       groupId={group.id}
                       groupName={group.name}
+                      description={(group as any).description}
                       memberCount={group.memberCount ?? 0}
                       contributionAmount={(group as any).contributionAmount ?? 0}
                       currency={(group as any).currency ?? 'XLM'}
                       status={(group as any).status ?? 'active'}
-                      onViewDetails={() => navigate(buildRoute.groupDetail(group.id))}
+                      onViewDetails={() => setPreviewGroup(group as any)}
                       onJoin={
-                        (group as any).status === 'active' || (group as any).status === 'pending'
-                          ? () => navigate(buildRoute.groupDetail(group.id))
+                        (group as any).status !== 'completed'
+                          ? () => setJoinGroup(group as any)
                           : undefined
                       }
                     />
@@ -104,26 +101,15 @@ export default function BrowseGroupsPage() {
                 />
               </div>
 
-              {/* Pagination controls driven by the hook */}
               {pagination.totalPages > 1 && (
                 <div className="browse-groups-pagination" role="navigation" aria-label="Group list pagination">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    disabled={!pagination.hasPrevPage}
-                    onClick={() => setPage(pagination.page - 1)}
-                  >
+                  <Button variant="secondary" size="sm" disabled={!pagination.hasPrevPage} onClick={() => setPage(pagination.page - 1)}>
                     Previous
                   </Button>
                   <span className="browse-groups-page-info">
                     Page {pagination.page} of {pagination.totalPages}
                   </span>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    disabled={!pagination.hasNextPage}
-                    onClick={() => setPage(pagination.page + 1)}
-                  >
+                  <Button variant="secondary" size="sm" disabled={!pagination.hasNextPage} onClick={() => setPage(pagination.page + 1)}>
                     Next
                   </Button>
                   <select
@@ -132,9 +118,7 @@ export default function BrowseGroupsPage() {
                     onChange={(e) => setPageSize(Number(e.target.value))}
                     className="browse-groups-page-size"
                   >
-                    {[12, 24, 48].map((n) => (
-                      <option key={n} value={n}>{n} per page</option>
-                    ))}
+                    {[10, 20, 50].map((n) => <option key={n} value={n}>{n} per page</option>)}
                   </select>
                 </div>
               )}
@@ -142,6 +126,36 @@ export default function BrowseGroupsPage() {
           )}
         </Stack>
       </AppCard>
-    </AppLayout>
+
+      {/* Group preview drawer */}
+      <GroupPreview
+        group={previewGroup}
+        onClose={() => setPreviewGroup(null)}
+        onJoin={(g) => { setPreviewGroup(null); setJoinGroup(g); }}
+      />
+
+      {/* Join confirmation modal */}
+      <JoinGroupModal
+        group={joinGroup}
+        onClose={() => setJoinGroup(null)}
+        onConfirm={handleJoinConfirm}
+      />
+    </>
+  );
+}
+
+export default function BrowseGroupsPage() {
+  const navigate = useNavigate();
+  return (
+    <ToastProvider>
+      <AppLayout
+        title="Browse Groups"
+        subtitle="Discover and join public savings groups"
+        footerText="Stellar Save - Built for transparent, on-chain savings"
+        navItems={[{ key: 'create', label: 'Create Group', onClick: () => navigate(ROUTES.GROUP_CREATE) }]}
+      >
+        <BrowseGroupsContent />
+      </AppLayout>
+    </ToastProvider>
   );
 }

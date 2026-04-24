@@ -5,38 +5,24 @@
 
 import type { GroupDetail, PublicGroup, GroupFilters } from '../types/group';
 
-// Re-export so existing imports keep working
 export type { PublicGroup, GroupDetail };
 
 export interface GroupData {
   name: string;
   description: string;
   image_url: string;
-  contribution_amount: number; // stroops = XLM * 10_000_000
-  cycle_duration: number;      // seconds
+  contribution_amount: number;
+  cycle_duration: number;
   max_members: number;
   min_members: number;
 }
 
 export async function createGroup(data: GroupData): Promise<string> {
-  // stub — returns a mock group ID
   void data;
   return Promise.resolve('mock-group-id');
 }
 
-export interface PublicGroup {
-  id: string;
-  name: string;
-  description?: string;
-  memberCount: number;
-  contributionAmount: number; // in XLM
-  currency: string;
-  status: 'active' | 'completed' | 'pending';
-  createdAt: Date;
-}
-
 export interface DetailedGroup extends PublicGroup {
-  // Additional detailed information
   totalMembers: number;
   targetAmount: number;
   currentAmount: number;
@@ -75,14 +61,31 @@ export interface GroupCycle {
   status: 'active' | 'completed' | 'upcoming';
 }
 
+// Mock dataset - swap with real Soroban/Horizon fetch when ready
+const MOCK_GROUPS: PublicGroup[] = [
+  { id: '1',  name: 'Family Savings Circle',    description: 'A trusted circle for family members to save together monthly.',          memberCount: 8,  contributionAmount: 500,  currency: 'XLM', status: 'active',    createdAt: new Date('2026-01-10') },
+  { id: '2',  name: 'Vacation Fund 2026',        description: 'Saving up for a group holiday. Join before spots fill up!',              memberCount: 5,  contributionAmount: 250,  currency: 'XLM', status: 'active',    createdAt: new Date('2026-02-01') },
+  { id: '3',  name: 'Business Startup Pool',     description: 'Entrepreneurs pooling capital for early-stage ventures.',                memberCount: 10, contributionAmount: 1000, currency: 'XLM', status: 'active',    createdAt: new Date('2026-01-20') },
+  { id: '4',  name: 'Emergency Reserve',         description: 'Community emergency fund for unexpected expenses.',                      memberCount: 12, contributionAmount: 300,  currency: 'XLM', status: 'completed', createdAt: new Date('2025-09-01') },
+  { id: '5',  name: 'Tech Workers Ajo',          description: 'Monthly savings circle for tech professionals.',                         memberCount: 6,  contributionAmount: 750,  currency: 'XLM', status: 'active',    createdAt: new Date('2026-03-01') },
+  { id: '6',  name: 'Diaspora Savings Group',    description: 'Connecting the African diaspora through community savings.',             memberCount: 15, contributionAmount: 200,  currency: 'XLM', status: 'active',    createdAt: new Date('2026-02-15') },
+  { id: '7',  name: 'Student Housing Fund',      description: 'Students saving together for housing deposits.',                         memberCount: 4,  contributionAmount: 150,  currency: 'XLM', status: 'pending',   createdAt: new Date('2026-04-01') },
+  { id: '8',  name: 'Market Traders Circle',     description: 'Local market traders pooling resources for stock.',                      memberCount: 9,  contributionAmount: 400,  currency: 'XLM', status: 'active',    createdAt: new Date('2026-01-05') },
+  { id: '9',  name: 'Healthcare Workers Pool',   description: 'Savings group for healthcare professionals.',                            memberCount: 7,  contributionAmount: 600,  currency: 'XLM', status: 'active',    createdAt: new Date('2026-03-10') },
+  { id: '10', name: 'Women Entrepreneurs Fund',  description: 'Empowering women-led businesses through collective savings.',            memberCount: 11, contributionAmount: 350,  currency: 'XLM', status: 'active',    createdAt: new Date('2026-02-20') },
+  { id: '11', name: 'Retired Teachers Circle',   description: 'Supplemental savings for retired educators.',                            memberCount: 8,  contributionAmount: 200,  currency: 'XLM', status: 'completed', createdAt: new Date('2025-06-01') },
+  { id: '12', name: 'Youth Savings Initiative',  description: 'Teaching young adults financial discipline through group savings.',      memberCount: 3,  contributionAmount: 100,  currency: 'XLM', status: 'pending',   createdAt: new Date('2026-04-10') },
+];
+
 export async function fetchGroups(filters?: Partial<GroupFilters>): Promise<PublicGroup[]> {
-  // stub — TODO: replace with actual Soroban contract invocation
+  // TODO: replace with actual Soroban contract invocation
   void filters;
-  return Promise.resolve([]);
+  await new Promise((r) => setTimeout(r, 600));
+  return MOCK_GROUPS;
 }
 
 export async function fetchGroup(groupId: string): Promise<DetailedGroup | null> {
-  // stub — TODO: replace with actual Soroban contract invocation
+  // TODO: replace with actual Soroban contract invocation
   void groupId;
   return Promise.resolve(null);
 }
