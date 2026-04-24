@@ -115,6 +115,10 @@ pub enum StellarSaveError {
     /// The two groups are not compatible for merging (different contribution amount or cycle duration).
     /// Error Code: 1005
     MergeIncompatible = 1005,
+
+    /// The address has not been invited to join this invitation-only group.
+    /// Error Code: 2004
+    NotInvited = 2004,
 }
 
 impl StellarSaveError {
@@ -211,6 +215,9 @@ impl StellarSaveError {
             }
             StellarSaveError::MergeIncompatible => {
                 "The two groups are not compatible for merging. Both must have the same contribution amount and cycle duration."
+            }
+            StellarSaveError::NotInvited => {
+                "This address has not been invited to join the group. Only invited addresses can join invitation-only groups."
             }
         }
     }
@@ -360,6 +367,9 @@ impl ErrorRecoveryStrategy {
             }
             StellarSaveError::MergeIncompatible => {
                 "Ensure both groups have the same contribution_amount and cycle_duration before merging."
+            }
+            StellarSaveError::NotInvited => {
+                "Ask the group creator to invite your address before attempting to join."
             }
         }
     }

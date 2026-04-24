@@ -78,6 +78,10 @@ pub enum GroupKey {
     /// Merged-from source group IDs: GROUP_MERGED_FROM_{id}
     /// Stores the two source group IDs that were merged to create this group.
     MergedFrom(u64),
+
+    /// Invitation list: GROUP_INVITATIONS_{id}
+    /// Stores the Vec<Address> of addresses invited to join this group.
+    Invitations(u64),
 }
 
 /// Storage keys for member-related data.
@@ -258,6 +262,11 @@ impl StorageKeyBuilder {
     /// Creates a key for storing the source group IDs of a merged group.
     pub fn group_merged_from(group_id: u64) -> StorageKey {
         StorageKey::Group(GroupKey::MergedFrom(group_id))
+    }
+
+    /// Creates a key for the invitation list of a group.
+    pub fn group_invitations(group_id: u64) -> StorageKey {
+        StorageKey::Group(GroupKey::Invitations(group_id))
     }
 
     // Member key builders

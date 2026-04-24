@@ -35,6 +35,7 @@ pub mod token;
 mod multi_token_tests;
 mod merge_tests;
 mod milestone_tests;
+mod invitation_tests;
 pub mod milestones;
 
 // Re-export for convenience
@@ -1886,6 +1887,148 @@ pub fn is_member(
         Ok(())
     }
 
+    /// Enables or disables invitation-only mode for a group.
+    /// Only the creator can call this while the group is Pending.
+    pub fn set_invitation_only(
+        env: Env,
+        group_id: u64,
+        enabled: bool,
+    ) -> Result<(), StellarSaveError> {
+        let group_key = StorageKeyBuilder::group_data(group_id);
+        let mut group = env
+            .storage()
+            .persistent()
+            .get::<_, Group>(&group_key)
+            .ok_or(StellarSaveError::GroupNotFound)?;
+
+        group.creator.require_auth();
+
+        let status: GroupStatus = env
+            .storage()
+            .persistent()
+            .get(&StorageKeyBuilder::group_status(group_id))
+            .unwrap_or(GroupStatus::Pending);
+        if status != GroupStatus::Pending {
+            return Err(StellarSaveError::InvalidState);
+        }
+
+        group.invitation_only = enabled;
+        env.storage().persistent().set(&group_key, &group);
+        Ok(())
+    }
+
+    /// Invites an address to join an invitation-only group.
+    /// Only the group creator can call this; group must be Pending.
+    ///
+    /// # Errors
+    /// - `GroupNotFound` - Group doesn't exist
+    /// - `Unauthorized` - Caller is not the group creator
+    /// - `InvalidState` - Group is not Pending
+    /// - `AlreadyMember` - Address is already a member
+    pub fn invite_member(
+        env: Env,
+        group_id: u64,
+        invitee: Address,
+    ) -> Result<(), StellarSaveError> {
+        let group_key = StorageKeyBuilder::group_data(group_id);
+        let group = env
+            .storage()
+            .persistent()
+            .get::<_, Group>(&group_key)
+            .ok_or(StellarSaveError::GroupNotFound)?;
+
+        group.creator.require_auth();
+
+        let status: GroupStatus = env
+            .storage()
+            .persistent()
+            .get(&StorageKeyBuilder::group_status(group_id))
+            .unwrap_or(GroupStatus::Pending);
+        if status != GroupStatus::Pending {
+            return Err(StellarSaveError::InvalidState);
+        }
+
+        // Reject if already a member
+        if env
+            .storage()
+            .persistent()
+            .has(&StorageKeyBuilder::member_profile(group_id, invitee.clone()))
+        {
+            return Err(StellarSaveError::AlreadyMember);
+        }
+
+        let inv_key = StorageKeyBuilder::group_invitations(group_id);
+        let mut invitations: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&inv_key)
+            .unwrap_or(Vec::new(&env));
+
+        if !invitations.contains(&invitee) {
+            invitations.push_back(invitee.clone());
+            env.storage().persistent().set(&inv_key, &invitations);
+        }
+
+        let timestamp = env.ledger().timestamp();
+        EventEmitter::emit_member_invited(&env, group_id, invitee, group.creator, timestamp);
+        Ok(())
+    }
+
+    /// Revokes a pending invitation for an address.
+    /// Only the group creator can call this; group must be Pending.
+    ///
+    /// # Errors
+    /// - `GroupNotFound` - Group doesn't exist
+    /// - `Unauthorized` - Caller is not the group creator
+    /// - `InvalidState` - Group is not Pending
+    /// - `NotInvited` - Address was not invited
+    pub fn revoke_invitation(
+        env: Env,
+        group_id: u64,
+        invitee: Address,
+    ) -> Result<(), StellarSaveError> {
+        let group_key = StorageKeyBuilder::group_data(group_id);
+        let group = env
+            .storage()
+            .persistent()
+            .get::<_, Group>(&group_key)
+            .ok_or(StellarSaveError::GroupNotFound)?;
+
+        group.creator.require_auth();
+
+        let status: GroupStatus = env
+            .storage()
+            .persistent()
+            .get(&StorageKeyBuilder::group_status(group_id))
+            .unwrap_or(GroupStatus::Pending);
+        if status != GroupStatus::Pending {
+            return Err(StellarSaveError::InvalidState);
+        }
+
+        let inv_key = StorageKeyBuilder::group_invitations(group_id);
+        let invitations: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&inv_key)
+            .unwrap_or(Vec::new(&env));
+
+        if !invitations.contains(&invitee) {
+            return Err(StellarSaveError::NotInvited);
+        }
+
+        let mut new_list: Vec<Address> = Vec::new(&env);
+        for addr in invitations.iter() {
+            if addr != invitee {
+                new_list.push_back(addr);
+            }
+        }
+        env.storage().persistent().set(&inv_key, &new_list);
+
+        let timestamp = env.ledger().timestamp();
+        EventEmitter::emit_invitation_revoked(&env, group_id, invitee, group.creator, timestamp);
+        Ok(())
+    }
+
     /// Merges two compatible Pending groups into a new group.
     ///
     /// Compatibility requires both groups to have the same `contribution_amount`
@@ -3033,6 +3176,19 @@ pub fn is_member(
         // Task 3: Check group not full
         if group.member_count >= group.max_members {
             return Err(StellarSaveError::GroupFull);
+        }
+
+        // Task 3b: Check invitation if group is invitation-only
+        if group.invitation_only {
+            let inv_key = StorageKeyBuilder::group_invitations(group_id);
+            let invitations: Vec<Address> = env
+                .storage()
+                .persistent()
+                .get(&inv_key)
+                .unwrap_or(Vec::new(&env));
+            if !invitations.contains(&member) {
+                return Err(StellarSaveError::NotInvited);
+            }
         }
 
         // Task 4: Assign payout position

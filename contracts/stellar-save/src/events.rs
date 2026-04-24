@@ -203,6 +203,26 @@ pub struct MilestoneReached {
     pub reached_at_cycle: u32,
 }
 
+/// Event emitted when a creator invites an address to join a group.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MemberInvited {
+    pub group_id: u64,
+    pub invited: Address,
+    pub invited_by: Address,
+    pub invited_at: u64,
+}
+
+/// Event emitted when a creator revokes a pending invitation.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InvitationRevoked {
+    pub group_id: u64,
+    pub revoked: Address,
+    pub revoked_by: Address,
+    pub revoked_at: u64,
+}
+
 /// Event emitted when a penalty is applied to a member for a missed contribution.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -499,6 +519,38 @@ impl EventEmitter {
             reached_at_cycle,
         };
         env.events().publish(("milestone_reached",), event);
+    }
+
+    pub fn emit_member_invited(
+        env: &Env,
+        group_id: u64,
+        invited: Address,
+        invited_by: Address,
+        invited_at: u64,
+    ) {
+        let event = MemberInvited {
+            group_id,
+            invited,
+            invited_by,
+            invited_at,
+        };
+        env.events().publish(("member_invited",), event);
+    }
+
+    pub fn emit_invitation_revoked(
+        env: &Env,
+        group_id: u64,
+        revoked: Address,
+        revoked_by: Address,
+        revoked_at: u64,
+    ) {
+        let event = InvitationRevoked {
+            group_id,
+            revoked,
+            revoked_by,
+            revoked_at,
+        };
+        env.events().publish(("invitation_revoked",), event);
     }
 
     pub fn emit_groups_merged(
