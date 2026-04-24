@@ -219,6 +219,10 @@ pub struct Group {
     /// Maximum allowed value is 604800 (7 days). Defaults to 0 (no grace period).
     pub grace_period_seconds: u64,
 
+    /// Accumulated reward pool from contribution fees (1% of each contribution).
+    /// Distributed equally among members who complete all cycles.
+    pub reward_pool: i128,
+
 }
 
 impl Group {
@@ -324,6 +328,7 @@ impl Group {
 
             grace_period_seconds,
 
+            reward_pool: 0,
         }
     }
 

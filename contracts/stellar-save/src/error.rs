@@ -56,6 +56,14 @@ pub enum StellarSaveError {
     /// Error Code: 3004
     ContributionNotFound = 3004,
 
+    /// The contribution amount is below the configured minimum.
+    /// Error Code: 3006
+    ContributionTooLow = 3006,
+
+    /// The contribution amount exceeds the configured maximum.
+    /// Error Code: 3007
+    ContributionTooHigh = 3007,
+
     // Payout-related errors (4000-4999)
     /// The payout operation failed due to insufficient funds or transfer error.
     /// Error Code: 4001
@@ -77,6 +85,15 @@ pub enum StellarSaveError {
     /// The SEP-41 transfer_from or transfer call failed during contribution or payout.
     /// Error Code: 5002
     TokenTransferFailed = 5002,
+
+    // Reward-related errors (6000-6999)
+    /// The member has already claimed their completion reward.
+    /// Error Code: 6001
+    RewardAlreadyClaimed = 6001,
+
+    /// The member is not eligible to claim a completion reward.
+    /// Error Code: 6002
+    RewardNotEligible = 6002,
 
     // System-related errors (9000-9999)
     /// An internal contract error occurred.
@@ -145,6 +162,12 @@ impl StellarSaveError {
             StellarSaveError::ContributionNotFound => {
                 "The contribution record was not found for the specified member and cycle."
             }
+            StellarSaveError::ContributionTooLow => {
+                "The contribution amount is below the configured minimum limit."
+            }
+            StellarSaveError::ContributionTooHigh => {
+                "The contribution amount exceeds the configured maximum limit."
+            }
 
             // Payout-related errors
             StellarSaveError::PayoutFailed => {
@@ -163,6 +186,14 @@ impl StellarSaveError {
             }
             StellarSaveError::TokenTransferFailed => {
                 "The token transfer failed. Ensure the member has granted sufficient allowance to the contract."
+            }
+
+            // Reward-related errors
+            StellarSaveError::RewardAlreadyClaimed => {
+                "You have already claimed your completion reward for this group."
+            }
+            StellarSaveError::RewardNotEligible => {
+                "You are not eligible to claim a completion reward. Only members who completed all cycles are eligible."
             }
 
             // System-related errors
@@ -200,6 +231,7 @@ impl StellarSaveError {
             3000..=3999 => ErrorCategory::Contribution,
             4000..=4999 => ErrorCategory::Payout,
             5000..=5999 => ErrorCategory::Token,
+            6000..=6999 => ErrorCategory::Reward,
             9000..=9999 => ErrorCategory::System,
             _ => ErrorCategory::Unknown,
         }
@@ -224,6 +256,9 @@ pub enum ErrorCategory {
 
     /// Errors related to token validation and transfer operations.
     Token,
+
+    /// Errors related to completion reward operations.
+    Reward,
 
     /// System-level errors and internal failures.
     System,
@@ -300,6 +335,14 @@ impl ErrorRecoveryStrategy {
             }
             StellarSaveError::TokenTransferFailed => {
                 "Ensure you have called `approve` on the token contract granting the StellarSave contract an allowance of at least the contribution amount before calling `contribute`."
+            }
+
+            // Reward errors - recovery strategies
+            StellarSaveError::RewardAlreadyClaimed => {
+                "You have already claimed your reward for this group. Each member can only claim once."
+            }
+            StellarSaveError::RewardNotEligible => {
+                "Only members who contributed in every cycle are eligible. Verify your contribution history."
             }
 
             // System errors - recovery strategies
