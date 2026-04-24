@@ -31,6 +31,12 @@ export type { Member } from "./MemberList";
 export { JoinGroupButton } from "./JoinGroupButton";
 export { GroupFilters } from "./GroupFilters";
 export type { FilterState, GroupStatus, SortOption } from "./GroupFilters";
+
+export { ContributionCalendar } from "./ContributionCalendar";
+export type { CalendarEvent, CalendarView } from "./ContributionCalendar";
+
+export { GroupComparison } from "./GroupComparison";
+
 export { CycleProgress } from "./CycleProgress";
 export type { CycleProgressProps } from "./CycleProgress";
 export { UserStats } from "./UserStats";
@@ -39,3 +45,5 @@ export { DebounceDemo } from "./DebounceDemo";
 export { ContributionFlow } from "./ContributionFlow";
 export type { ContributionFlowProps } from "./ContributionFlow";
 export { WalletIntegration } from "./WalletIntegration";
+export { ActivityFeed } from "./ActivityFeed/ActivityFeed";
+export type { ActivityFeedProps } from "./ActivityFeed/ActivityFeed";
