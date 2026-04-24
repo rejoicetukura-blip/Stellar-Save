@@ -51,3 +51,5 @@ export { MemberDirectory } from "./MemberDirectory";
 export type { MemberDirectoryProps } from "./MemberDirectory";
 export { TransactionConfirmModal } from "./TransactionConfirmModal";
 export type { TransactionConfirmModalProps, TransactionDetails, TxType, ConfirmationStep } from "./TransactionConfirmModal";
+export { Leaderboard, PeriodTabs } from "./Leaderboard";
+export type { LeaderboardProps } from "./Leaderboard";

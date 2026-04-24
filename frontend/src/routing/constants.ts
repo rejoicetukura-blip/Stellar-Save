@@ -20,6 +20,8 @@ export const ROUTES = {
 
   GROUP_MEMBERS: "/groups/:groupId/members",
 
+  LEADERBOARD: "/leaderboard",
+
 } as const;
 
 /**

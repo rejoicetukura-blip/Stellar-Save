@@ -15,6 +15,7 @@ const BrowseGroupsPage = lazy(() => import("../pages/BrowseGroupsPage"));
 
 const ContributionCalendarPage = lazy(() => import("../pages/ContributionCalendarPage"));
 const MemberDirectoryPage = lazy(() => import("../pages/MemberDirectoryPage"));
+const LeaderboardPage = lazy(() => import("../pages/LeaderboardPage"));
 
 const GroupComparisonPage = lazy(() => import("../pages/GroupComparisonPage"));
 
@@ -87,6 +88,13 @@ export const routeConfig: RouteConfig[] = [
     protected: true,
     title: "Member Directory - Stellar Save",
     description: "Browse and search group members",
+  },
+  {
+    path: ROUTES.LEADERBOARD,
+    component: LeaderboardPage,
+    protected: true,
+    title: "Leaderboard - Stellar Save",
+    description: "Top-performing groups and contributors",
   },
   {
     path: ROUTES.PROFILE,
