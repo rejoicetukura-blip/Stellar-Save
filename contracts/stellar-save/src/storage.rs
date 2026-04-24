@@ -69,8 +69,19 @@ pub enum GroupKey {
     /// Stores the current GroupStatus for quick status checks.
     Status(u64),
 
+    /// Token configuration: GROUP_TOKEN_CONFIG_{id}
+    /// Stores the TokenConfig (token address + decimals) for a specific group.
+    TokenConfig(u64),
     /// Dispute reason string: GROUP_DISPUTE_REASON_{id}
     DisputeReason(u64),
+
+    /// Merged-from source group IDs: GROUP_MERGED_FROM_{id}
+    /// Stores the two source group IDs that were merged to create this group.
+    MergedFrom(u64),
+
+    /// Invitation list: GROUP_INVITATIONS_{id}
+    /// Stores the Vec<Address> of addresses invited to join this group.
+    Invitations(u64),
 }
 
 /// Storage keys for member-related data.
@@ -96,9 +107,17 @@ pub enum MemberKey {
     /// Tracks total amount contributed by member across all cycles.
     TotalContributions(u64, Address),
 
+    /// Member reward claimed flag: MEMBER_REWARD_CLAIMED_{group_id}_{address}
+    /// Tracks whether a member has claimed their completion reward.
+    RewardClaimed(u64, Address),
+
     /// Member total penalties: MEMBER_PENALTY_{group_id}_{address}
     /// Tracks cumulative penalty amount charged to a member for missed contributions.
     PenaltyTotal(u64, Address),
+
+    /// Member contribution streak: MEMBER_STREAK_{group_id}_{address}
+    /// Tracks the current and best consecutive-contribution streak for a member.
+    Streak(u64, Address),
 }
 
 /// Storage keys for contribution tracking.
@@ -201,6 +220,10 @@ pub enum CounterKey {
     /// Emergency pause flag: COUNTER_EMERGENCY_PAUSE
     /// Tracks if the contract is paused by admin.
     EmergencyPause,
+
+    /// Allowed tokens list: COUNTER_ALLOWED_TOKENS
+    /// Stores the optional admin-managed allowlist of permitted token addresses.
+    AllowedTokens,
 }
 
 /// Utility functions for creating storage keys with consistent formatting.
@@ -236,6 +259,16 @@ impl StorageKeyBuilder {
         StorageKey::Group(GroupKey::DisputeReason(group_id))
     }
 
+    /// Creates a key for storing the source group IDs of a merged group.
+    pub fn group_merged_from(group_id: u64) -> StorageKey {
+        StorageKey::Group(GroupKey::MergedFrom(group_id))
+    }
+
+    /// Creates a key for the invitation list of a group.
+    pub fn group_invitations(group_id: u64) -> StorageKey {
+        StorageKey::Group(GroupKey::Invitations(group_id))
+    }
+
     // Member key builders
 
     /// Creates a key for storing member profile data.
@@ -258,9 +291,19 @@ impl StorageKeyBuilder {
         StorageKey::Member(MemberKey::TotalContributions(group_id, address))
     }
 
+    /// Creates a key for tracking whether a member has claimed their completion reward.
+    pub fn member_reward_claimed(group_id: u64, address: Address) -> StorageKey {
+        StorageKey::Member(MemberKey::RewardClaimed(group_id, address))
+    }
+
     /// Creates a key for member cumulative penalty total.
     pub fn member_penalty_total(group_id: u64, address: Address) -> StorageKey {
         StorageKey::Member(MemberKey::PenaltyTotal(group_id, address))
+    }
+
+    /// Creates a key for member contribution streak.
+    pub fn member_streak(group_id: u64, address: Address) -> StorageKey {
+        StorageKey::Member(MemberKey::Streak(group_id, address))
     }
 
     // Contribution key builders
@@ -367,6 +410,16 @@ impl StorageKeyBuilder {
     /// Creates a key for the global emergency pause flag.
     pub fn emergency_pause() -> StorageKey {
         StorageKey::Counter(CounterKey::EmergencyPause)
+    }
+
+    /// Creates a key for the token configuration of a specific group.
+    pub fn group_token_config(group_id: u64) -> StorageKey {
+        StorageKey::Group(GroupKey::TokenConfig(group_id))
+    }
+
+    /// Creates a key for the admin-managed allowed tokens list.
+    pub fn allowed_tokens() -> StorageKey {
+        StorageKey::Counter(CounterKey::AllowedTokens)
     }
 
     /// Creates a key storing the timestamp of a user's last group creation.
