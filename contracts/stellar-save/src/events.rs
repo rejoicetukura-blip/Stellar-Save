@@ -232,6 +232,27 @@ pub struct GroupArchived {
     pub archived_at: u64,
 }
 
+/// Event emitted when an auto-contribution is executed on behalf of a member.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AutoContributionExecuted {
+    pub group_id: u64,
+    pub member: Address,
+    pub amount: i128,
+    pub cycle: u32,
+    pub executed_at: u64,
+}
+
+/// Event emitted when an auto-contribution fails due to insufficient balance.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AutoContributionFailed {
+    pub group_id: u64,
+    pub member: Address,
+    pub cycle: u32,
+    pub failed_at: u64,
+}
+
 /// Event emitted when a penalty is applied to a member for a missed contribution.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -623,6 +644,42 @@ impl EventEmitter {
             archived_at,
         };
         env.events().publish(("group_archived",), event);
+    }
+
+    /// Emits an event when an auto-contribution is successfully executed for a member.
+    pub fn emit_auto_contribution_executed(
+        env: &Env,
+        group_id: u64,
+        member: Address,
+        amount: i128,
+        cycle: u32,
+        executed_at: u64,
+    ) {
+        let event = AutoContributionExecuted {
+            group_id,
+            member,
+            amount,
+            cycle,
+            executed_at,
+        };
+        env.events().publish(("auto_contribution_executed",), event);
+    }
+
+    /// Emits an event when an auto-contribution fails due to insufficient balance.
+    pub fn emit_auto_contribution_failed(
+        env: &Env,
+        group_id: u64,
+        member: Address,
+        cycle: u32,
+        failed_at: u64,
+    ) {
+        let event = AutoContributionFailed {
+            group_id,
+            member,
+            cycle,
+            failed_at,
+        };
+        env.events().publish(("auto_contribution_failed",), event);
     }
 }
 

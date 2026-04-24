@@ -132,6 +132,10 @@ pub enum MemberKey {
     /// Member contribution streak: MEMBER_STREAK_{group_id}_{address}
     /// Tracks the current and best consecutive-contribution streak for a member.
     Streak(u64, Address),
+
+    /// Auto-contribution enabled flag: MEMBER_AUTO_CONTRIBUTE_{group_id}_{address}
+    /// Tracks whether a member has opted in to automatic contributions at cycle start.
+    AutoContribute(u64, Address),
 }
 
 /// Storage keys for contribution tracking.
@@ -334,6 +338,11 @@ impl StorageKeyBuilder {
     /// Creates a key for member contribution streak.
     pub fn member_streak(group_id: u64, address: Address) -> StorageKey {
         StorageKey::Member(MemberKey::Streak(group_id, address))
+    }
+
+    /// Creates a key for member auto-contribution enabled flag.
+    pub fn member_auto_contribute(group_id: u64, address: Address) -> StorageKey {
+        StorageKey::Member(MemberKey::AutoContribute(group_id, address))
     }
 
     // Contribution key builders

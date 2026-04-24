@@ -40,6 +40,7 @@ mod milestone_tests;
 mod invitation_tests;
 pub mod milestones;
 pub mod gas_benchmark;
+mod auto_contribution_tests;
 
 // Re-export for convenience
 pub use contribution::{ContributionPage, ContributionRecord};
@@ -99,6 +100,11 @@ pub struct MemberProfile {
 
     /// Timestamp when member joined the group
     pub joined_at: u64,
+
+    /// Whether the member has opted in to automatic contributions.
+    /// When true, `execute_auto_contributions` will attempt a `transfer_from`
+    /// on behalf of this member at the start of each cycle.
+    pub auto_contribute_enabled: bool,
 }
 
 /// Payout schedule entry containing recipient and payout date
@@ -2173,6 +2179,7 @@ impl StellarSaveContract {
                 group_id: merged_id,
                 payout_position: position,
                 joined_at: timestamp,
+                auto_contribute_enabled: false,
             };
             env.storage().persistent().set(
                 &StorageKeyBuilder::member_profile(merged_id, member.clone()),
@@ -3336,6 +3343,7 @@ impl StellarSaveContract {
             group_id,
             payout_position,
             joined_at: timestamp,
+            auto_contribute_enabled: false,
         };
         env.storage().persistent().set(&member_key, &member_profile);
 
@@ -3896,6 +3904,321 @@ impl StellarSaveContract {
         );
 
         Ok(())
+    }
+
+    // =========================================================================
+    // AUTO-CONTRIBUTION FEATURE
+    // =========================================================================
+
+    /// Enables automatic contributions for a member in a group.
+    ///
+    /// When enabled, `execute_auto_contributions` will attempt a `transfer_from`
+    /// on behalf of this member at the start of each cycle, using the pre-approved
+    /// allowance the member has granted to the contract.
+    ///
+    /// The member must have called `approve` on the group's token contract granting
+    /// the StellarSave contract a sufficient allowance before each cycle begins.
+    ///
+    /// # Arguments
+    /// * `env`      - Soroban environment
+    /// * `group_id` - ID of the group
+    /// * `member`   - Address of the member enabling auto-contribution (must be caller)
+    ///
+    /// # Returns
+    /// * `Ok(())` - Auto-contribution enabled successfully
+    /// * `Err(StellarSaveError::GroupNotFound)` - Group doesn't exist
+    /// * `Err(StellarSaveError::InvalidState)` - Group is not Active
+    /// * `Err(StellarSaveError::NotMember)` - Caller is not a member of the group
+    pub fn enable_auto_contribute(
+        env: Env,
+        group_id: u64,
+        member: Address,
+    ) -> Result<(), StellarSaveError> {
+        member.require_auth();
+
+        // Load group — verify it exists and is Active
+        let group_key = StorageKeyBuilder::group_data(group_id);
+        let group: Group = env
+            .storage()
+            .persistent()
+            .get(&group_key)
+            .ok_or(StellarSaveError::GroupNotFound)?;
+
+        if group.status != GroupStatus::Active {
+            return Err(StellarSaveError::InvalidState);
+        }
+
+        // Verify member is part of the group
+        let member_key = StorageKeyBuilder::member_profile(group_id, member.clone());
+        let mut profile: MemberProfile = env
+            .storage()
+            .persistent()
+            .get(&member_key)
+            .ok_or(StellarSaveError::NotMember)?;
+
+        // Idempotent: no-op if already enabled
+        if profile.auto_contribute_enabled {
+            return Ok(());
+        }
+
+        profile.auto_contribute_enabled = true;
+        env.storage().persistent().set(&member_key, &profile);
+
+        // Also persist the flag under the dedicated key for O(1) lookup
+        // during execute_auto_contributions without loading the full profile.
+        let flag_key = StorageKeyBuilder::member_auto_contribute(group_id, member.clone());
+        env.storage().persistent().set(&flag_key, &true);
+
+        Ok(())
+    }
+
+    /// Disables automatic contributions for a member in a group.
+    ///
+    /// After calling this, `execute_auto_contributions` will skip this member.
+    ///
+    /// # Arguments
+    /// * `env`      - Soroban environment
+    /// * `group_id` - ID of the group
+    /// * `member`   - Address of the member disabling auto-contribution (must be caller)
+    ///
+    /// # Returns
+    /// * `Ok(())` - Auto-contribution disabled successfully
+    /// * `Err(StellarSaveError::GroupNotFound)` - Group doesn't exist
+    /// * `Err(StellarSaveError::NotMember)` - Caller is not a member of the group
+    pub fn disable_auto_contribute(
+        env: Env,
+        group_id: u64,
+        member: Address,
+    ) -> Result<(), StellarSaveError> {
+        member.require_auth();
+
+        // Verify group exists
+        let group_key = StorageKeyBuilder::group_data(group_id);
+        if !env.storage().persistent().has(&group_key) {
+            return Err(StellarSaveError::GroupNotFound);
+        }
+
+        // Verify member is part of the group
+        let member_key = StorageKeyBuilder::member_profile(group_id, member.clone());
+        let mut profile: MemberProfile = env
+            .storage()
+            .persistent()
+            .get(&member_key)
+            .ok_or(StellarSaveError::NotMember)?;
+
+        // Idempotent: no-op if already disabled
+        if !profile.auto_contribute_enabled {
+            return Ok(());
+        }
+
+        profile.auto_contribute_enabled = false;
+        env.storage().persistent().set(&member_key, &profile);
+
+        // Remove the dedicated flag key
+        let flag_key = StorageKeyBuilder::member_auto_contribute(group_id, member.clone());
+        env.storage().persistent().remove(&flag_key);
+
+        Ok(())
+    }
+
+    /// Returns whether auto-contribution is enabled for a member in a group.
+    ///
+    /// # Arguments
+    /// * `env`      - Soroban environment
+    /// * `group_id` - ID of the group
+    /// * `member`   - Address of the member to query
+    ///
+    /// # Returns
+    /// * `Ok(bool)` - true if auto-contribution is enabled, false otherwise
+    /// * `Err(StellarSaveError::GroupNotFound)` - Group doesn't exist
+    /// * `Err(StellarSaveError::NotMember)` - Member not in group
+    pub fn is_auto_contribute_enabled(
+        env: Env,
+        group_id: u64,
+        member: Address,
+    ) -> Result<bool, StellarSaveError> {
+        // Verify group exists
+        let group_key = StorageKeyBuilder::group_data(group_id);
+        if !env.storage().persistent().has(&group_key) {
+            return Err(StellarSaveError::GroupNotFound);
+        }
+
+        // Verify member exists
+        let member_key = StorageKeyBuilder::member_profile(group_id, member.clone());
+        if !env.storage().persistent().has(&member_key) {
+            return Err(StellarSaveError::NotMember);
+        }
+
+        let flag_key = StorageKeyBuilder::member_auto_contribute(group_id, member);
+        Ok(env
+            .storage()
+            .persistent()
+            .get::<_, bool>(&flag_key)
+            .unwrap_or(false))
+    }
+
+    /// Executes automatic contributions for all opted-in members of a group.
+    ///
+    /// This is a permissionless function — anyone can call it to trigger
+    /// auto-contributions at the start of a new cycle. It iterates over all
+    /// group members, and for each member with `auto_contribute_enabled = true`
+    /// that has not yet contributed in the current cycle, it attempts a
+    /// `transfer_from` using the member's pre-approved allowance.
+    ///
+    /// # Behavior per member
+    /// - If the member has already contributed this cycle: skip silently.
+    /// - If the member's balance or allowance is insufficient: emit
+    ///   `AutoContributionFailed` and continue to the next member (soft failure).
+    /// - If the transfer succeeds: record the contribution and emit
+    ///   `AutoContributionExecuted`.
+    ///
+    /// Soft failures are intentional — a single member's insufficient balance
+    /// must not block other members' auto-contributions.
+    ///
+    /// # Arguments
+    /// * `env`      - Soroban environment
+    /// * `group_id` - ID of the group to process
+    ///
+    /// # Returns
+    /// * `Ok(u32)` - Number of auto-contributions successfully executed
+    /// * `Err(StellarSaveError::GroupNotFound)` - Group doesn't exist
+    /// * `Err(StellarSaveError::InvalidState)` - Group is not Active
+    pub fn execute_auto_contributions(
+        env: Env,
+        group_id: u64,
+    ) -> Result<u32, StellarSaveError> {
+        // ── 1. Load group — single SLOAD, reused for all checks ───────────────
+        let group_key = StorageKeyBuilder::group_data(group_id);
+        let group: Group = env
+            .storage()
+            .persistent()
+            .get(&group_key)
+            .ok_or(StellarSaveError::GroupNotFound)?;
+
+        if group.status != GroupStatus::Active {
+            return Err(StellarSaveError::InvalidState);
+        }
+
+        let current_cycle = group.current_cycle;
+        let contribution_amount = group.contribution_amount;
+
+        // ── 2. Load token config once ─────────────────────────────────────────
+        let token_config_key = StorageKeyBuilder::group_token_config(group_id);
+        let token_config: crate::group::TokenConfig = env
+            .storage()
+            .persistent()
+            .get(&token_config_key)
+            .ok_or(StellarSaveError::GroupNotFound)?;
+
+        let token_client =
+            soroban_sdk::token::TokenClient::new(&env, &token_config.token_address);
+        let contract_address = env.current_contract_address();
+
+        // ── 3. Load member list ───────────────────────────────────────────────
+        let members_key = StorageKeyBuilder::group_members(group_id);
+        let members: soroban_sdk::Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&members_key)
+            .ok_or(StellarSaveError::GroupNotFound)?;
+
+        let timestamp = env.ledger().timestamp();
+        let mut executed_count: u32 = 0;
+
+        // ── 4. Iterate members ────────────────────────────────────────────────
+        for member in members.iter() {
+            // 4a. Check if auto-contribute is enabled for this member (O(1) flag lookup)
+            let flag_key =
+                StorageKeyBuilder::member_auto_contribute(group_id, member.clone());
+            let auto_enabled: bool = env
+                .storage()
+                .persistent()
+                .get::<_, bool>(&flag_key)
+                .unwrap_or(false);
+
+            if !auto_enabled {
+                continue;
+            }
+
+            // 4b. Skip if member already contributed this cycle
+            let contrib_key = StorageKeyBuilder::contribution_individual(
+                group_id,
+                current_cycle,
+                member.clone(),
+            );
+            if env.storage().persistent().has(&contrib_key) {
+                continue;
+            }
+
+            // 4c. Check member balance — soft failure on insufficient funds
+            let balance = token_client.balance(&member);
+            if balance < contribution_amount {
+                EventEmitter::emit_auto_contribution_failed(
+                    &env,
+                    group_id,
+                    member.clone(),
+                    current_cycle,
+                    timestamp,
+                );
+                continue;
+            }
+
+            // 4d. Check allowance — soft failure if allowance is insufficient
+            let allowance = token_client.allowance(&member, &contract_address);
+            if allowance < contribution_amount {
+                EventEmitter::emit_auto_contribution_failed(
+                    &env,
+                    group_id,
+                    member.clone(),
+                    current_cycle,
+                    timestamp,
+                );
+                continue;
+            }
+
+            // 4e. Execute the transfer
+            token_client.transfer_from(
+                &contract_address,
+                &member,
+                &contract_address,
+                &contribution_amount,
+            );
+
+            // 4f. Record contribution in storage
+            let cycle_total = Self::record_contribution(
+                &env,
+                group_id,
+                current_cycle,
+                member.clone(),
+                contribution_amount,
+                timestamp,
+            )?;
+
+            // 4g. Emit AutoContributionExecuted event
+            EventEmitter::emit_auto_contribution_executed(
+                &env,
+                group_id,
+                member.clone(),
+                contribution_amount,
+                current_cycle,
+                timestamp,
+            );
+
+            // 4h. Also emit the standard ContributionMade event for consistency
+            EventEmitter::emit_contribution_made(
+                &env,
+                group_id,
+                member,
+                contribution_amount,
+                current_cycle,
+                cycle_total,
+                timestamp,
+            );
+
+            executed_count += 1;
+        }
+
+        Ok(executed_count)
     }
 
 } // close impl StellarSaveContract
@@ -4585,6 +4908,7 @@ mod tests {
             group_id,
             payout_position: 2,
             joined_at: 12345,
+            auto_contribute_enabled: false,
         };
 
         // Store the member profile
@@ -4610,6 +4934,7 @@ mod tests {
             group_id,
             payout_position: 0,
             joined_at: 12345,
+            auto_contribute_enabled: false,
         };
 
         // Store the member profile
@@ -5837,6 +6162,7 @@ mod tests {
             group_id,
             joined_at,
             payout_position: 0, // Default value for test
+            auto_contribute_enabled: false,
         };
         let member_key = StorageKeyBuilder::member_profile(group_id, member.clone());
         env.storage().persistent().set(&member_key, &member_profile);
@@ -6021,6 +6347,7 @@ mod tests {
                 group_id,
                 payout_position: 0,
                 joined_at: 1000,
+                auto_contribute_enabled: false,
             };
             env.storage().persistent().set(
                 &StorageKeyBuilder::member_profile(group_id, member),
@@ -6127,6 +6454,7 @@ mod tests {
                 group_id,
                 payout_position: 0,
                 joined_at: 1000,
+                auto_contribute_enabled: false,
             };
             env.storage().persistent().set(
                 &StorageKeyBuilder::member_profile(group_id, member),
@@ -6248,6 +6576,7 @@ mod tests {
                 group_id,
                 payout_position: 0,
                 joined_at: 1000,
+                auto_contribute_enabled: false,
             };
             env.storage().persistent().set(
                 &StorageKeyBuilder::member_profile(group_id, member),
@@ -6322,6 +6651,7 @@ mod tests {
                 group_id,
                 payout_position: 0,
                 joined_at: 1000,
+                auto_contribute_enabled: false,
             };
             env.storage()
                 .persistent()
@@ -10696,6 +11026,7 @@ mod tests {
             group_id: 1,
             payout_position: 0,
             joined_at: 12345,
+            auto_contribute_enabled: false,
         };
         env.storage()
             .persistent()
@@ -10821,6 +11152,7 @@ mod tests {
             group_id,
             payout_position: 0,
             joined_at: env.ledger().timestamp(),
+            auto_contribute_enabled: false,
         };
         env.storage().persistent().set(
             &StorageKeyBuilder::member_profile(group_id, member.clone()),
@@ -11017,6 +11349,7 @@ mod tests {
                 group_id,
                 payout_position: i as u32,
                 joined_at: 0,
+                auto_contribute_enabled: false,
             };
             env.storage().persistent().set(
                 &StorageKeyBuilder::member_profile(group_id, m.clone()),
@@ -11128,6 +11461,7 @@ mod tests {
             group_id,
             payout_position: 0,
             joined_at: 0,
+            auto_contribute_enabled: false,
         };
         env.storage().persistent().set(
             &StorageKeyBuilder::member_profile(group_id, member.clone()),
@@ -11178,6 +11512,7 @@ mod tests {
             group_id,
             payout_position: 0,
             joined_at: 0,
+            auto_contribute_enabled: false,
         };
         env.storage().persistent().set(
             &StorageKeyBuilder::member_profile(group_id, member.clone()),
