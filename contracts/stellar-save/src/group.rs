@@ -225,8 +225,35 @@ pub struct Group {
     /// Distributed equally among members who complete all cycles.
     pub reward_pool: i128,
 
-}
+    /// Whether the group is temporarily paused by the creator.
+    pub paused: bool,
 
+    /// Whether penalty deductions are enabled for this group.
+    pub penalty_enabled: bool,
+
+    /// Fixed penalty amount per missed cycle in stroops (0 = use percentage-based).
+    pub penalty_amount: i128,
+
+    /// Whether a dispute is currently active for this group.
+    pub dispute_active: bool,
+
+    /// Optional display name for the group (up to 50 chars).
+    pub name: Option<soroban_sdk::String>,
+
+    /// Optional description for the group (up to 500 chars).
+    pub description: Option<soroban_sdk::String>,
+
+    /// Optional image URL for the group.
+    pub image_url: Option<soroban_sdk::String>,
+
+    /// Whether this group has been archived by its creator.
+    ///
+    /// Archiving is only allowed after the group reaches a terminal state
+    /// (Completed or Cancelled). Archived groups are excluded from the default
+    /// `list_groups()` results and are only visible via `list_archived_groups()`.
+    /// This reduces active storage scan costs and improves query performance.
+    pub archived: bool,
+}
 impl Group {
     /// Creates a new Group with validation.
     ///
@@ -266,6 +293,7 @@ impl Group {
             max_members,
             min_members,
             created_at,
+            grace_period_seconds,
             false,
             0,
         )
@@ -280,6 +308,7 @@ impl Group {
         max_members: u32,
         min_members: u32,
         created_at: u64,
+        grace_period_seconds: u64,
         penalty_enabled: bool,
         penalty_amount: i128,
     ) -> Self {
@@ -324,17 +353,21 @@ impl Group {
             created_at,
             started: false,
             started_at: 0,
-
             require_contribution_proof: false,
             allow_dynamic_contributions: false,
-
             grace_period_seconds,
-
             invitation_only: false,
             reward_pool: 0,
+            paused: false,
+            penalty_enabled,
+            penalty_amount,
+            dispute_active: false,
+            name: None,
+            description: None,
+            image_url: None,
+            archived: false,
         }
     }
-
     /// Checks if the group has completed all cycles.
     /// A group is complete when current_cycle equals max_members
     /// or when status is Completed.

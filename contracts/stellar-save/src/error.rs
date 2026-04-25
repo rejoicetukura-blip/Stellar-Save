@@ -64,6 +64,10 @@ pub enum StellarSaveError {
     /// Error Code: 3007
     ContributionTooHigh = 3007,
 
+    /// The member's token balance is insufficient for auto-contribution.
+    /// Error Code: 3008
+    InsufficientBalance = 3008,
+
     // Payout-related errors (4000-4999)
     /// The payout operation failed due to insufficient funds or transfer error.
     /// Error Code: 4001
@@ -119,6 +123,14 @@ pub enum StellarSaveError {
     /// The address has not been invited to join this invitation-only group.
     /// Error Code: 2004
     NotInvited = 2004,
+
+    /// A dispute is currently active for this group; payouts are blocked.
+    /// Error Code: 1006
+    DisputeActive = 1006,
+
+    /// The group cannot be archived because it is not in a terminal state (Completed or Cancelled).
+    /// Error Code: 1007
+    GroupNotArchivable = 1007,
 }
 
 impl StellarSaveError {
@@ -141,6 +153,15 @@ impl StellarSaveError {
             StellarSaveError::InvalidMetadata => {
                 "Invalid metadata provided. Name must be 3-50 characters, description 0-500 characters."
             }
+            StellarSaveError::MergeIncompatible => {
+                "The two groups are not compatible for merging. Both must have the same contribution amount and cycle duration."
+            }
+            StellarSaveError::DisputeActive => {
+                "A dispute is currently active for this group. Payouts are blocked until the dispute is resolved."
+            }
+            StellarSaveError::GroupNotArchivable => {
+                "The group cannot be archived because it is not in a terminal state (Completed or Cancelled)."
+            }
 
             // Member-related errors
             StellarSaveError::AlreadyMember => {
@@ -151,6 +172,9 @@ impl StellarSaveError {
             }
             StellarSaveError::Unauthorized => {
                 "You are not authorized to perform this operation. Check permissions."
+            }
+            StellarSaveError::NotInvited => {
+                "This address has not been invited to join the group. Only invited addresses can join invitation-only groups."
             }
 
             // Contribution-related errors
@@ -171,6 +195,12 @@ impl StellarSaveError {
             }
             StellarSaveError::ContributionTooHigh => {
                 "The contribution amount exceeds the configured maximum limit."
+            }
+            StellarSaveError::InsufficientBalance => {
+                "The member's token balance is insufficient to cover the auto-contribution amount."
+            }
+            StellarSaveError::CycleDeadlineExpired => {
+                "The cycle deadline has passed. Contributions are no longer accepted for this cycle."
             }
 
             // Payout-related errors
@@ -210,19 +240,8 @@ impl StellarSaveError {
             StellarSaveError::Overflow => {
                 "The ID counter has reached its maximum limit. No more IDs can be generated."
             }
-            StellarSaveError::CycleDeadlineExpired => {
-                "The cycle deadline has passed. Contributions are no longer accepted for this cycle."
-            }
-            StellarSaveError::MergeIncompatible => {
-                "The two groups are not compatible for merging. Both must have the same contribution amount and cycle duration."
-            }
-            StellarSaveError::NotInvited => {
-                "This address has not been invited to join the group. Only invited addresses can join invitation-only groups."
-            }
         }
     }
-
-    /// Returns the numeric error code for this error type.
     ///
     /// Error codes are stable across contract versions and should be used
     /// by client applications for programmatic error handling.
@@ -299,6 +318,18 @@ impl ErrorRecoveryStrategy {
             StellarSaveError::InvalidState => {
                 "Check the group's current status. Some operations are only available in specific states (e.g., Active, Paused)."
             }
+            StellarSaveError::InvalidMetadata => {
+                "Check that the group name is 3-50 characters and description is 0-500 characters."
+            }
+            StellarSaveError::MergeIncompatible => {
+                "Ensure both groups have the same contribution_amount and cycle_duration before merging."
+            }
+            StellarSaveError::DisputeActive => {
+                "A dispute is active for this group. Wait for the dispute to be resolved before payouts can proceed."
+            }
+            StellarSaveError::GroupNotArchivable => {
+                "Only groups in a terminal state (Completed or Cancelled) can be archived. Wait until the group finishes all cycles or is cancelled."
+            }
 
             // Member errors - recovery strategies
             StellarSaveError::AlreadyMember => {
@@ -309,6 +340,9 @@ impl ErrorRecoveryStrategy {
             }
             StellarSaveError::Unauthorized => {
                 "Ensure you have the required permissions. Only group creators can pause/resume/cancel groups. Only members can contribute."
+            }
+            StellarSaveError::NotInvited => {
+                "Ask the group creator to invite your address before attempting to join."
             }
 
             // Contribution errors - recovery strategies
@@ -323,6 +357,18 @@ impl ErrorRecoveryStrategy {
             }
             StellarSaveError::ContributionNotFound => {
                 "The contribution record doesn't exist. Verify the member and cycle number are correct."
+            }
+            StellarSaveError::ContributionTooLow => {
+                "Increase the contribution amount to meet the configured minimum."
+            }
+            StellarSaveError::ContributionTooHigh => {
+                "Decrease the contribution amount to stay within the configured maximum."
+            }
+            StellarSaveError::InsufficientBalance => {
+                "Ensure your token balance is sufficient to cover the contribution amount before the cycle starts, or disable auto-contribution."
+            }
+            StellarSaveError::CycleDeadlineExpired => {
+                "The cycle deadline has passed. Contributions are no longer accepted for this cycle."
             }
 
             // Payout errors - recovery strategies
@@ -361,15 +407,6 @@ impl ErrorRecoveryStrategy {
             }
             StellarSaveError::Overflow => {
                 "The ID counter has reached its maximum. This is extremely rare and requires contract upgrade."
-            }
-            StellarSaveError::CycleDeadlineExpired => {
-                "The cycle deadline has passed. Contributions are no longer accepted for this cycle."
-            }
-            StellarSaveError::MergeIncompatible => {
-                "Ensure both groups have the same contribution_amount and cycle_duration before merging."
-            }
-            StellarSaveError::NotInvited => {
-                "Ask the group creator to invite your address before attempting to join."
             }
         }
     }

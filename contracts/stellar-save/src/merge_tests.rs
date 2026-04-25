@@ -43,6 +43,7 @@ mod tests {
                 group_id,
                 payout_position: i as u32,
                 joined_at: env.ledger().timestamp(),
+                auto_contribute_enabled: false,
             };
             env.storage()
                 .persistent()

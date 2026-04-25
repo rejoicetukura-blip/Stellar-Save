@@ -1,4 +1,4 @@
-use soroban_sdk::{contracttype, Address, Env};
+use soroban_sdk::{contracttype, Address, Env, String};
 
 /// Event emitted when a new savings group is created.
 #[contracttype]
@@ -223,6 +223,47 @@ pub struct InvitationRevoked {
     pub revoked_at: u64,
 }
 
+/// Event emitted when a completed group is archived by its creator.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GroupArchived {
+    pub group_id: u64,
+    pub archived_by: Address,
+    pub archived_at: u64,
+}
+
+/// Event emitted when an auto-contribution is executed on behalf of a member.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AutoContributionExecuted {
+    pub group_id: u64,
+    pub member: Address,
+    pub amount: i128,
+    pub cycle: u32,
+    pub executed_at: u64,
+}
+
+/// Event emitted when an auto-contribution fails due to insufficient balance.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AutoContributionFailed {
+    pub group_id: u64,
+    pub member: Address,
+    pub cycle: u32,
+    pub failed_at: u64,
+}
+
+/// Event emitted when a member rates a group after completion.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GroupRated {
+    pub group_id: u64,
+    pub member: Address,
+    pub stars: u32,
+    pub comment: String,
+    pub rated_at: u64,
+}
+
 /// Event emitted when a penalty is applied to a member for a missed contribution.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -297,6 +338,21 @@ impl EventEmitter {
         env.events().publish(("member_left",), event);
     }
 
+    /// Emits a reminder event when a contribution is due for a member.
+    pub fn emit_contribution_due(
+        env: &Env,
+        group_id: u64,
+        member: Address,
+        cycle: u32,
+        deadline: u64,
+        emitted_at: u64,
+    ) {
+        env.events().publish(
+            (soroban_sdk::Symbol::new(env, "contribution_due"), group_id),
+            (member, cycle, deadline, emitted_at),
+        );
+    }
+
     pub fn emit_contribution_made(
         env: &Env,
         group_id: u64,
@@ -305,8 +361,7 @@ impl EventEmitter {
         cycle: u32,
         cycle_total: i128,
         contributed_at: u64,
-    ) {
-        let event = ContributionMade {
+    ) {        let event = ContributionMade {
             group_id,
             contributor,
             amount,
@@ -590,6 +645,71 @@ impl EventEmitter {
             claimed_at,
         };
         env.events().publish(("reward_claimed",), event);
+    }
+
+    /// Emits an event when a completed group is archived by its creator.
+    pub fn emit_group_archived(env: &Env, group_id: u64, archived_by: Address, archived_at: u64) {
+        let event = GroupArchived {
+            group_id,
+            archived_by,
+            archived_at,
+        };
+        env.events().publish(("group_archived",), event);
+    }
+
+    /// Emits an event when an auto-contribution is successfully executed for a member.
+    pub fn emit_auto_contribution_executed(
+        env: &Env,
+        group_id: u64,
+        member: Address,
+        amount: i128,
+        cycle: u32,
+        executed_at: u64,
+    ) {
+        let event = AutoContributionExecuted {
+            group_id,
+            member,
+            amount,
+            cycle,
+            executed_at,
+        };
+        env.events().publish(("auto_contribution_executed",), event);
+    }
+
+    /// Emits an event when an auto-contribution fails due to insufficient balance.
+    pub fn emit_auto_contribution_failed(
+        env: &Env,
+        group_id: u64,
+        member: Address,
+        cycle: u32,
+        failed_at: u64,
+    ) {
+        let event = AutoContributionFailed {
+            group_id,
+            member,
+            cycle,
+            failed_at,
+        };
+        env.events().publish(("auto_contribution_failed",), event);
+    }
+
+    /// Emits an event when a member rates a group.
+    pub fn emit_group_rated(
+        env: &Env,
+        group_id: u64,
+        member: Address,
+        stars: u32,
+        comment: String,
+        rated_at: u64,
+    ) {
+        let event = GroupRated {
+            group_id,
+            member,
+            stars,
+            comment,
+            rated_at,
+        };
+        env.events().publish(("group_rated",), event);
     }
 }
 

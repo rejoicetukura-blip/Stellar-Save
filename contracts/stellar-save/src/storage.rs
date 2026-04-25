@@ -82,6 +82,28 @@ pub enum GroupKey {
     /// Invitation list: GROUP_INVITATIONS_{id}
     /// Stores the Vec<Address> of addresses invited to join this group.
     Invitations(u64),
+
+    /// Payout position reverse index: GROUP_PAYOUT_POS_IDX_{id}_{position}
+    ///
+    /// Gas opt: stores the Address of the member assigned to a given payout
+    /// position. Written once at join/assign time; read once per payout cycle.
+    /// Replaces the O(n) member-list scan in `identify_recipient` with a single
+    /// O(1) SLOAD: `position → Address`.
+    PayoutPositionIndex(u64, u32),
+
+    /// Archived flag: GROUP_ARCHIVED_{id}
+    /// Stores a bool indicating whether the group has been archived by its creator.
+    /// Archived groups are excluded from `list_groups()` by default and are only
+    /// visible via `list_archived_groups()`.
+    Archived(u64),
+
+    /// Per-member rating: GROUP_RATING_{id}_{member}
+    /// Stores the RatingEntry submitted by a specific member for this group.
+    Rating(u64, Address),
+
+    /// Rating aggregate: GROUP_RATING_AGG_{id}
+    /// Stores the running RatingAggregate (total_stars + rating_count) for a group.
+    RatingAggregate(u64),
 }
 
 /// Storage keys for member-related data.
@@ -118,6 +140,10 @@ pub enum MemberKey {
     /// Member contribution streak: MEMBER_STREAK_{group_id}_{address}
     /// Tracks the current and best consecutive-contribution streak for a member.
     Streak(u64, Address),
+
+    /// Auto-contribution enabled flag: MEMBER_AUTO_CONTRIBUTE_{group_id}_{address}
+    /// Tracks whether a member has opted in to automatic contributions at cycle start.
+    AutoContribute(u64, Address),
 }
 
 /// Storage keys for contribution tracking.
@@ -269,6 +295,32 @@ impl StorageKeyBuilder {
         StorageKey::Group(GroupKey::Invitations(group_id))
     }
 
+    /// Creates a key for the payout-position reverse index.
+    ///
+    /// Gas opt: maps `(group_id, position) → Address` so `identify_recipient`
+    /// can do a single O(1) SLOAD instead of iterating all members.
+    pub fn group_payout_position_index(group_id: u64, position: u32) -> StorageKey {
+        StorageKey::Group(GroupKey::PayoutPositionIndex(group_id, position))
+    }
+
+    /// Creates a key for the archived flag of a group.
+    ///
+    /// Stores a `bool` indicating whether the group has been archived.
+    /// Archived groups are hidden from `list_groups()` by default.
+    pub fn group_archived(group_id: u64) -> StorageKey {
+        StorageKey::Group(GroupKey::Archived(group_id))
+    }
+
+    /// Creates a key for a member's individual rating of a group.
+    pub fn group_rating(group_id: u64, member: Address) -> StorageKey {
+        StorageKey::Group(GroupKey::Rating(group_id, member))
+    }
+
+    /// Creates a key for the rating aggregate of a group.
+    pub fn group_rating_aggregate(group_id: u64) -> StorageKey {
+        StorageKey::Group(GroupKey::RatingAggregate(group_id))
+    }
+
     // Member key builders
 
     /// Creates a key for storing member profile data.
@@ -306,6 +358,11 @@ impl StorageKeyBuilder {
         StorageKey::Member(MemberKey::Streak(group_id, address))
     }
 
+    /// Creates a key for member auto-contribution enabled flag.
+    pub fn member_auto_contribute(group_id: u64, address: Address) -> StorageKey {
+        StorageKey::Member(MemberKey::AutoContribute(group_id, address))
+    }
+
     // Contribution key builders
 
     /// Creates a key for individual contribution records.
@@ -325,6 +382,11 @@ impl StorageKeyBuilder {
 
     /// Creates a key for tracking whether a member's proof was verified for a cycle.
     pub fn contribution_proof_verified(group_id: u64, cycle: u32, address: Address) -> StorageKey {
+        StorageKey::Contribution(ContributionKey::ProofVerified(group_id, cycle, address))
+    }
+
+    /// Creates a key for tracking whether a contribution reminder was emitted for a member.
+    pub fn contribution_reminder_emitted(group_id: u64, cycle: u32, address: Address) -> StorageKey {
         StorageKey::Contribution(ContributionKey::ProofVerified(group_id, cycle, address))
     }
 
@@ -488,6 +550,11 @@ pub mod key_prefixes {
 /// - `GROUP_{id}`: Complete group data (configuration, state)
 /// - `GROUP_MEMBERS_{id}`: List of member addresses
 /// - `GROUP_STATUS_{id}`: Current group status
+/// - `GROUP_ARCHIVED_{id}`: Boolean flag indicating whether the group has been archived
+///
+/// Archived groups are excluded from `list_groups()` by default and are only
+/// visible via `list_archived_groups()`. Archiving is a one-way, creator-only
+/// operation available after a group reaches a terminal state (Completed or Cancelled).
 ///
 /// ## Member Storage (MemberKey)
 /// - `MEMBER_{group_id}_{address}`: Member profile (join date, status)
@@ -540,7 +607,7 @@ impl StorageLayout {
 
     /// Returns the estimated storage overhead per group.
     pub fn estimated_overhead_per_group() -> &'static str {
-        "Approximately 5-10 storage entries per group (group data, members list, status, balance, paid_out)"
+        "Approximately 6-11 storage entries per group (group data, members list, status, balance, paid_out, archived flag)"
     }
 
     /// Returns the estimated storage overhead per member.
