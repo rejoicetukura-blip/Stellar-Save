@@ -1,0 +1,67 @@
+name: Upgrade Tests
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'contracts/**'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'contracts/**'
+
+jobs:
+  upgrade-tests:
+    name: Contract Upgrade Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      # Run only the upgrade_tests module so CI feedback is fast and targeted
+      - name: Run upgrade tests
+        run: |
+          cargo test \
+            --manifest-path contracts/stellar-save/Cargo.toml \
+            upgrade_tests \
+            -- --test-threads=1 --nocapture
+
+      # Collect coverage for the upgrade test module specifically
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Upgrade test coverage
+        run: |
+          cargo llvm-cov \
+            --manifest-path contracts/stellar-save/Cargo.toml \
+            --lcov \
+            --output-path upgrade-lcov.info \
+            -- upgrade_tests --test-threads=1
+
+      - name: Upload upgrade coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: upgrade-test-coverage
+          path: upgrade-lcov.info
+          retention-days: 30
+
+      - name: Upload upgrade coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: upgrade-lcov.info
+          flags: upgrade-tests
+          name: upgrade-test-coverage
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
