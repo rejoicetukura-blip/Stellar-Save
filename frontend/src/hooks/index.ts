@@ -42,3 +42,5 @@ export type {
   UseActivityFeedOptions,
   UseActivityFeedReturn,
 } from './useActivityFeed';
+export { useDiscoveryFeed } from './useDiscoveryFeed';
+export type { UseDiscoveryFeedReturn } from './useDiscoveryFeed';
