@@ -57,3 +57,6 @@ export { GroupComments } from "./GroupComments";
 export type { Comment as GroupComment, GroupCommentsProps } from "./GroupComments";
 export { StreakDisplay, getEarnedBadges, getNextMilestone, STREAK_BADGES } from "./StreakDisplay";
 export type { StreakDisplayProps, StreakBadge } from "./StreakDisplay";
+export { QRCode } from "./QRCode";
+export { InviteModal } from "./InviteModal";
+export { InviteButton } from "./InviteButton";
