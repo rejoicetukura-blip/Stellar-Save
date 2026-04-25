@@ -28,7 +28,7 @@ pub mod payout;
 pub mod payout_executor;
 pub mod penalty;
 pub mod pool;
-pub mod search;
+pub mod rating;
 pub mod status;
 pub mod storage;
 pub mod token;
@@ -53,7 +53,7 @@ pub use events::*;
 pub use group::{Group, GroupStatus};
 pub use payout::PayoutRecord;
 pub use pool::{PoolCalculator, PoolInfo};
-pub use search::{SearchParams, SearchResult, SortOrder};
+pub use rating::{GroupRating, RatingAggregate, RatingEntry};
 #[cfg(test)]
 use soroban_sdk::testutils::{Events, Ledger};
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, Symbol, Vec};
@@ -2689,6 +2689,51 @@ impl StellarSaveContract {
     pub fn get_total_groups_created(env: Env) -> u64 {
         let key = StorageKeyBuilder::next_group_id();
         env.storage().persistent().get(&key).unwrap_or(0)
+    }
+
+    /// Submits a 1–5 star rating (with optional comment) for a completed or cancelled group.
+    ///
+    /// # Rules
+    /// - Group must be in a terminal state (Completed or Cancelled).
+    /// - Caller must be a member of the group.
+    /// - Each member may only rate once per group.
+    /// - `stars` must be 1–5.
+    /// - `comment` must be ≤ 280 characters (pass an empty string for no comment).
+    ///
+    /// # Errors
+    /// - `GroupNotFound` – group does not exist
+    /// - `InvalidState` – group is not yet in a terminal state
+    /// - `NotMember` – caller is not a member of the group
+    /// - `InvalidAmount` – stars is 0 or > 5
+    /// - `InvalidMetadata` – comment exceeds 280 characters
+    /// - `AlreadyContributed` – member has already rated this group
+    pub fn rate_group(
+        env: Env,
+        caller: Address,
+        group_id: u64,
+        stars: u32,
+        comment: String,
+    ) -> Result<(), StellarSaveError> {
+        rating::rate_group(&env, caller, group_id, stars, comment)
+    }
+
+    /// Returns the aggregated rating summary for a group.
+    ///
+    /// Returns a [`GroupRating`] with `rating_count`, `total_stars`, and
+    /// `average_scaled` (average × 100, e.g. 450 = 4.50 stars).
+    /// Returns zeroed counts if no ratings have been submitted yet.
+    pub fn get_group_rating(env: Env, group_id: u64) -> Result<GroupRating, StellarSaveError> {
+        rating::get_group_rating(&env, group_id)
+    }
+
+    /// Returns the individual rating submitted by a specific member for a group.
+    /// Returns `None` if the member has not yet rated the group.
+    pub fn get_member_rating(
+        env: Env,
+        group_id: u64,
+        member: Address,
+    ) -> Result<Option<RatingEntry>, StellarSaveError> {
+        rating::get_member_rating(&env, group_id, member)
     }
 
     /// Gets the total XLM balance held by the contract.
