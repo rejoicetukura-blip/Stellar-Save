@@ -4,6 +4,8 @@ import dotenv from 'dotenv';
 import { RecommendationEngine } from './recommendation';
 import { ABTestingFramework } from './ab_testing';
 import { Group, UserInteraction, UserPreference } from './models';
+import { EmailService } from './email_service';
+import { ExportService } from './export_service';
 
 dotenv.config();
 
@@ -28,6 +30,12 @@ const mockInteractions: UserInteraction[] = [
 
 const engine = new RecommendationEngine(mockGroups, mockInteractions);
 const abTest = new ABTestingFramework();
+const emailService = new EmailService();
+const exportService = new ExportService(
+  emailService,
+  engine.getInteractions(),
+  engine.getPreferences()
+);
 
 // API Endpoints
 
@@ -67,6 +75,55 @@ app.get('/recommendations/:userId', (req, res) => {
  */
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
+});
+
+/**
+ * @api {post} /export Trigger data export
+ */
+app.post('/export', async (req, res) => {
+  const { userId, email, format } = req.body;
+  if (!userId || !email || !format) {
+    return res.status(400).json({ error: 'userId, email, and format are required' });
+  }
+  
+  if (format !== 'CSV' && format !== 'JSON') {
+    return res.status(400).json({ error: 'Invalid format. Use CSV or JSON' });
+  }
+
+  const jobId = await exportService.createJob(userId, email, format);
+  res.status(202).json({ jobId, message: 'Export job created' });
+});
+
+/**
+ * @api {get} /export/:jobId Get export status
+ */
+app.get('/export/:jobId', (req, res) => {
+  const { jobId } = req.params;
+  const job = exportService.getJob(jobId);
+  
+  if (!job) {
+    return res.status(404).json({ error: 'Job not found' });
+  }
+  
+  res.json(job);
+});
+
+/**
+ * @api {get} /export/:jobId/download Download export file
+ */
+app.get('/export/:jobId/download', (req, res) => {
+  const { jobId } = req.params;
+  const job = exportService.getJob(jobId);
+  
+  if (!job) {
+    return res.status(404).json({ error: 'Job not found' });
+  }
+  
+  if (job.status !== 'completed') {
+    return res.status(400).json({ error: 'Job is not completed yet' });
+  }
+  
+  res.json({ url: job.fileUrl });
 });
 
 app.listen(PORT, () => {
