@@ -28,6 +28,7 @@ pub mod payout;
 pub mod payout_executor;
 pub mod penalty;
 pub mod pool;
+pub mod search;
 pub mod status;
 pub mod storage;
 pub mod token;
@@ -51,6 +52,7 @@ pub use events::*;
 pub use group::{Group, GroupStatus};
 pub use payout::PayoutRecord;
 pub use pool::{PoolCalculator, PoolInfo};
+pub use search::{SearchParams, SearchResult, SortOrder};
 #[cfg(test)]
 use soroban_sdk::testutils::{Events, Ledger};
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, Symbol, Vec};
@@ -2650,6 +2652,35 @@ impl StellarSaveContract {
         }
 
         Ok(groups)
+    }
+
+    /// Searches and filters groups by various criteria with pagination and sorting.
+    ///
+    /// # Arguments
+    /// * `env` - Soroban environment
+    /// * `params` - [`SearchParams`] struct containing all filter, pagination, and sort options
+    ///
+    /// # Filter fields (all optional)
+    /// * `status` - Only return groups with this [`GroupStatus`]
+    /// * `min_amount` / `max_amount` - Contribution amount range (in stroops)
+    /// * `min_members` / `max_members` - Current member count range
+    ///
+    /// # Pagination
+    /// * `cursor` - Pass `0` for the first page; use `SearchResult::next_cursor` for subsequent pages
+    /// * `limit` - Results per page (capped at 50)
+    ///
+    /// # Sorting
+    /// * `sort` - [`SortOrder::CreatedDesc`] (default), [`SortOrder::CreatedAsc`],
+    ///   [`SortOrder::MemberCountDesc`], or [`SortOrder::MemberCountAsc`]
+    ///
+    /// # Returns
+    /// A [`SearchResult`] containing the matching groups, the next cursor, and scan count.
+    ///
+    /// # Notes
+    /// - Archived groups are always excluded from results.
+    /// - Member-count sorts load all matching groups before sorting; `next_cursor` will be `0`.
+    pub fn search_groups(env: Env, params: SearchParams) -> SearchResult {
+        search::search_groups(&env, params)
     }
 
     /// Returns the total number of groups created.
