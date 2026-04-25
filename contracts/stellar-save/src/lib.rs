@@ -41,6 +41,7 @@ mod invitation_tests;
 pub mod milestones;
 pub mod gas_benchmark;
 mod auto_contribution_tests;
+mod upgrade_tests;
 
 // Re-export for convenience
 pub use contribution::{ContributionPage, ContributionRecord};
