@@ -23,6 +23,7 @@ export const ROUTES = {
   LEADERBOARD: "/leaderboard",
   TEMPLATES: "/templates",
   ANALYTICS: "/analytics",
+  GROUP_JOIN: "/groups/join/:groupId",
 } as const;
 
 /**
@@ -37,4 +38,5 @@ export const buildRoute = {
   groupDetail: (groupId: string) => `/groups/${groupId}`,
   groupCalendar: (groupId: string) => `/groups/${groupId}/calendar`,
   groupMembers: (groupId: string) => `/groups/${groupId}/members`,
+  groupJoin: (groupId: string) => `/groups/join/${groupId}`,
 } as const;

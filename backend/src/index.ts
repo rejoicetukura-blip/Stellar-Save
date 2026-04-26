@@ -1,6 +1,9 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import { ApolloServer } from '@apollo/server';
+import { expressMiddleware } from '@apollo/server/express4';
+import { makeExecutableSchema } from '@graphql-tools/schema';
 import { RecommendationEngine } from './recommendation';
 import { ABTestingFramework } from './ab_testing';
 import { Group, UserInteraction } from './models';
@@ -24,6 +27,30 @@ app.use(express.json());
 app.use(requestLogger);
 app.use(metricsMiddleware);
 app.get('/metrics', metricsHandler);
+
+// ── GraphQL ───────────────────────────────────────────────────────────────────
+const schema = makeExecutableSchema({ typeDefs, resolvers });
+const apolloServer = new ApolloServer({
+  schema,
+  validationRules,
+  introspection: true,
+});
+
+// Apollo must be started before attaching middleware
+apolloServer.start().then(() => {
+  // Playground: GET /graphql returns Apollo Sandbox redirect
+  app.get('/graphql', (_req, res) => {
+    res.send(`
+      <!DOCTYPE html><html><head><title>GraphQL Playground</title></head><body>
+      <script>window.location.href = 'https://studio.apollographql.com/sandbox/explorer?endpoint=' + encodeURIComponent(window.location.origin + '/graphql');</script>
+      </body></html>
+    `);
+  });
+
+  app.use('/graphql', expressMiddleware(apolloServer, {
+    context: async () => ({}),
+  }));
+});
 
 const PORT = process.env.PORT || 3001;
 
