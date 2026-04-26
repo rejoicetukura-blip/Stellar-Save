@@ -80,6 +80,8 @@ const backupMonitor = new BackupMonitor(backupService, {
   alertWebhookUrl: process.env.BACKUP_ALERT_WEBHOOK_URL,
 });
 
+const adminService = new AdminService();
+
 if (process.env.BACKUP_ENABLED === 'true') {
   backupScheduler.start();
   backupMonitor.start();
