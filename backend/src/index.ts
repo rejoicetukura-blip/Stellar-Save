@@ -18,9 +18,7 @@ import { createV1Router } from './routes/v1';
 import { createV2Router } from './routes/v2';
 import { metricsMiddleware, metricsHandler } from './metrics';
 import { requestLogger } from './logger';
-import { getCacheStats } from './redis';
-import { startWarmingJob } from './cacheWarming';
-import { cacheMiddleware, clearCache } from './cacheMiddleware';
+import { createRateLimiterMiddleware } from './rate_limiter';
 
 dotenv.config();
 
@@ -30,6 +28,7 @@ app.use(express.json());
 app.use(requestLogger);
 app.use(metricsMiddleware);
 app.get('/metrics', metricsHandler);
+app.use(createRateLimiterMiddleware());
 
 // ========== CACHE ROUTES (Issue #563) ==========
 
