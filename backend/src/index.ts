@@ -18,6 +18,9 @@ import { createV1Router } from './routes/v1';
 import { createV2Router } from './routes/v2';
 import { metricsMiddleware, metricsHandler } from './metrics';
 import { requestLogger } from './logger';
+import { getCacheStats } from './redis';
+import { startWarmingJob } from './cacheWarming';
+import { cacheMiddleware, clearCache } from './cacheMiddleware';
 
 dotenv.config();
 
@@ -27,6 +30,46 @@ app.use(express.json());
 app.use(requestLogger);
 app.use(metricsMiddleware);
 app.get('/metrics', metricsHandler);
+
+// ========== CACHE ROUTES (Issue #563) ==========
+
+// Cache statistics endpoint - monitor cache hit rates
+app.get('/api/cache/stats', async (req, res) => {
+  const stats = await getCacheStats();
+  res.json(stats);
+});
+
+// Example cached endpoint for retirements
+app.get('/api/retirements', cacheMiddleware(60), async (req, res) => {
+  res.json({ 
+    data: 'Retirements data - cached for 60 seconds', 
+    timestamp: new Date(),
+    source: 'database'
+  });
+});
+
+// Write endpoint that invalidates cache
+app.post('/api/retirements', async (req, res) => {
+  await clearCache('/api/retirements');
+  res.json({ 
+    success: true, 
+    message: 'Retirement created, cache cleared',
+    timestamp: new Date()
+  });
+});
+
+// Cached stats endpoint
+app.get('/api/stats', cacheMiddleware(3600), async (req, res) => {
+  res.json({
+    totalRetired: 1000,
+    totalTransactions: 45,
+    timestamp: new Date(),
+    source: 'database'
+  });
+});
+
+// Start cache warming job (preloads popular data)
+startWarmingJob();
 
 // ── GraphQL ───────────────────────────────────────────────────────────────────
 const schema = makeExecutableSchema({ typeDefs, resolvers });
@@ -110,6 +153,7 @@ app.listen(PORT, () => {
   console.log(`API server running on port ${PORT}`);
   console.log(`  Versioned:  /api/v1/...  /api/v2/...`);
   console.log(`  Legacy:     /health  /recommendations  etc. (deprecated)`);
+  console.log(`  Cache stats: http://localhost:${PORT}/api/cache/stats`);
 });
 
-export { app };
+export { app }; 
