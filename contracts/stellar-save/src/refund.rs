@@ -3,7 +3,7 @@ use crate::error::StellarSaveError;
 use crate::events::EventEmitter;
 use crate::group::{Group, GroupStatus};
 use crate::storage::StorageKeyBuilder;
-use soroban_sdk::{contracttype, token, Address, Env};
+use soroban_sdk::{contracttype, Address, Env};
 
 /// Record of a processed refund.
 #[contracttype]
@@ -90,14 +90,20 @@ pub fn request_refund(
     let amount = contribution.amount;
     let now = env.ledger().timestamp();
 
-    // Transfer funds back to the contributor via the XLM token contract
-    let xlm_address: Address = env
+    // Transfer funds back to the contributor via the group's token contract
+    let token_config_key = StorageKeyBuilder::group_token_config(group_id);
+    let token_config: crate::group::TokenConfig = env
         .storage()
         .persistent()
-        .get(&StorageKeyBuilder::contract_config())
-        .expect("XLM token address not configured");
-    let token_client = token::Client::new(env, &xlm_address);
-    token_client.transfer(&env.current_contract_address(), &contribution.member_address, &amount);
+        .get(&token_config_key)
+        .ok_or(StellarSaveError::GroupNotFound)?;
+    let token_client =
+        soroban_sdk::token::TokenClient::new(env, &token_config.token_address);
+    token_client.transfer(
+        &env.current_contract_address(),
+        &contribution.member_address,
+        &amount,
+    );
 
     // Persist the refund record
     let record = RefundRecord {
