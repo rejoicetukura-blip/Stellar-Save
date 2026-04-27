@@ -93,6 +93,18 @@ pub struct ContractUnpaused {
     pub timestamp: u64,
 }
 
+/// Event emitted when a group creator extends the contribution deadline for a cycle.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CycleDeadlineExtended {
+    pub group_id: u64,
+    pub cycle: u32,
+    pub extension_seconds: u64,
+    pub new_deadline: u64,
+    pub extended_by: Address,
+    pub extended_at: u64,
+}
+
 /// Utility functions for emitting events.
 pub struct EventEmitter;
 
@@ -231,6 +243,26 @@ impl EventEmitter {
     pub fn emit_contract_unpaused(env: &Env, admin: Address, timestamp: u64) {
         let event = ContractUnpaused { admin, timestamp };
         env.events().publish(("contract_unpaused",), event);
+    }
+
+    pub fn emit_cycle_deadline_extended(
+        env: &Env,
+        group_id: u64,
+        cycle: u32,
+        extension_seconds: u64,
+        new_deadline: u64,
+        extended_by: Address,
+        extended_at: u64,
+    ) {
+        let event = CycleDeadlineExtended {
+            group_id,
+            cycle,
+            extension_seconds,
+            new_deadline,
+            extended_by,
+            extended_at,
+        };
+        env.events().publish(("cycle_deadline_extended",), event);
     }
 }
 

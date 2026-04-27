@@ -69,6 +69,11 @@ pub enum StellarSaveError {
     /// The contract data is corrupted or invalid.
     /// Error Code: 9002
     DataCorruption = 9002,
+
+    // Deadline-related errors (5000-5999)
+    /// The requested deadline extension exceeds the maximum allowed (7 days).
+    /// Error Code: 5001
+    DeadlineExtensionExceedsMax = 5001,
 }
 
 impl StellarSaveError {
@@ -129,6 +134,11 @@ impl StellarSaveError {
             StellarSaveError::DataCorruption => {
                 "Contract data appears to be corrupted. This is a critical error."
             }
+
+            // Deadline-related errors
+            StellarSaveError::DeadlineExtensionExceedsMax => {
+                "The requested deadline extension exceeds the maximum allowed (7 days)."
+            }
         }
     }
 
@@ -147,6 +157,7 @@ impl StellarSaveError {
             2000..=2999 => ErrorCategory::Member,
             3000..=3999 => ErrorCategory::Contribution,
             4000..=4999 => ErrorCategory::Payout,
+            5000..=5999 => ErrorCategory::Deadline,
             9000..=9999 => ErrorCategory::System,
             _ => ErrorCategory::Unknown,
         }
@@ -168,6 +179,9 @@ pub enum ErrorCategory {
 
     /// Errors related to payout operations.
     Payout,
+
+    /// Errors related to deadline operations.
+    Deadline,
 
     /// System-level errors and internal failures.
     System,

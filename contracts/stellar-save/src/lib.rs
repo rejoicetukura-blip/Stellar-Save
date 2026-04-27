@@ -16,9 +16,12 @@
 //! - `payout`: Payout record tracking for fund distributions
 
 pub mod contribution;
+pub mod deadline;
 pub mod error;
+pub mod events;
 pub mod group;
 pub mod payout;
+pub mod storage;
 
 // Re-export for convenience
 pub use contribution::ContributionRecord;
