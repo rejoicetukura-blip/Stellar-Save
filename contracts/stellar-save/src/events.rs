@@ -77,6 +77,17 @@ pub struct GroupStatusChanged {
     pub changed_at: u64,
 }
 
+/// Event emitted when a contribution is refunded.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RefundIssued {
+    pub group_id: u64,
+    pub member: Address,
+    pub amount: i128,
+    pub cycle: u32,
+    pub refunded_at: u64,
+}
+
 /// Event emitted when contract is paused.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -221,6 +232,24 @@ impl EventEmitter {
             changed_at,
         };
         env.events().publish(("group_status_changed",), event);
+    }
+
+    pub fn emit_refund_issued(
+        env: &Env,
+        group_id: u64,
+        member: Address,
+        amount: i128,
+        cycle: u32,
+        refunded_at: u64,
+    ) {
+        let event = RefundIssued {
+            group_id,
+            member,
+            amount,
+            cycle,
+            refunded_at,
+        };
+        env.events().publish(("refund_issued",), event);
     }
 
     pub fn emit_contract_paused(env: &Env, admin: Address, timestamp: u64) {

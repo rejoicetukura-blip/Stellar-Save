@@ -61,6 +61,19 @@ pub enum StellarSaveError {
     /// Error Code: 4003
     InvalidRecipient = 4003,
 
+    // Refund-related errors (5000-5999)
+    /// The contribution has already been refunded.
+    /// Error Code: 5001
+    AlreadyRefunded = 5001,
+
+    /// Refund is not eligible: group is active and payout has occurred.
+    /// Error Code: 5002
+    RefundNotEligible = 5002,
+
+    /// No contribution found to refund for the given group/cycle/member.
+    /// Error Code: 5003
+    ContributionNotFound = 5003,
+
     // System-related errors (9000-9999)
     /// An internal contract error occurred.
     /// Error Code: 9001
@@ -122,6 +135,17 @@ impl StellarSaveError {
                 "The specified recipient is not eligible for payout in this cycle."
             }
             
+            // Refund-related errors
+            StellarSaveError::AlreadyRefunded => {
+                "This contribution has already been refunded."
+            }
+            StellarSaveError::RefundNotEligible => {
+                "Refund is not eligible: the group is active and a payout has already occurred for this cycle."
+            }
+            StellarSaveError::ContributionNotFound => {
+                "No contribution found for the specified group, cycle, and member."
+            }
+
             // System-related errors
             StellarSaveError::InternalError => {
                 "An internal contract error occurred. Please try again or contact support."
@@ -147,6 +171,7 @@ impl StellarSaveError {
             2000..=2999 => ErrorCategory::Member,
             3000..=3999 => ErrorCategory::Contribution,
             4000..=4999 => ErrorCategory::Payout,
+            5000..=5999 => ErrorCategory::Refund,
             9000..=9999 => ErrorCategory::System,
             _ => ErrorCategory::Unknown,
         }
@@ -168,6 +193,9 @@ pub enum ErrorCategory {
 
     /// Errors related to payout operations.
     Payout,
+
+    /// Errors related to refund operations.
+    Refund,
 
     /// System-level errors and internal failures.
     System,
@@ -204,6 +232,10 @@ mod tests {
         assert_eq!(StellarSaveError::PayoutFailed.code(), 4001);
         assert_eq!(StellarSaveError::PayoutAlreadyProcessed.code(), 4002);
         assert_eq!(StellarSaveError::InvalidRecipient.code(), 4003);
+
+        assert_eq!(StellarSaveError::AlreadyRefunded.code(), 5001);
+        assert_eq!(StellarSaveError::RefundNotEligible.code(), 5002);
+        assert_eq!(StellarSaveError::ContributionNotFound.code(), 5003);
 
         assert_eq!(StellarSaveError::InternalError.code(), 9001);
         assert_eq!(StellarSaveError::DataCorruption.code(), 9002);
@@ -246,6 +278,19 @@ mod tests {
         );
 
         assert_eq!(
+            StellarSaveError::AlreadyRefunded.category(),
+            ErrorCategory::Refund
+        );
+        assert_eq!(
+            StellarSaveError::RefundNotEligible.category(),
+            ErrorCategory::Refund
+        );
+        assert_eq!(
+            StellarSaveError::ContributionNotFound.category(),
+            ErrorCategory::Refund
+        );
+
+        assert_eq!(
             StellarSaveError::InternalError.category(),
             ErrorCategory::System
         );
@@ -271,6 +316,9 @@ mod tests {
             StellarSaveError::PayoutFailed,
             StellarSaveError::PayoutAlreadyProcessed,
             StellarSaveError::InvalidRecipient,
+            StellarSaveError::AlreadyRefunded,
+            StellarSaveError::RefundNotEligible,
+            StellarSaveError::ContributionNotFound,
             StellarSaveError::InternalError,
             StellarSaveError::DataCorruption,
         ];
