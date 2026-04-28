@@ -14,7 +14,9 @@
     "test:coverage:watch": "vitest --coverage",
     "lhci": "lhci autorun --config .lighthouserc.json --upload.target temporary-public-storage",
     "test:e2e": "vitest run src/test/integration",
-    "test:e2e:testnet": "tsx src/test/e2e-testnet/testnet.e2e.ts"
+    "test:e2e:testnet": "tsx src/test/e2e-testnet/testnet.e2e.ts",
+    "test:mutation": "stryker run stryker.config.mjs",
+    "test:mutation:ci": "stryker run stryker.config.mjs --reporters json,clear-text --concurrency 2"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -63,6 +65,8 @@
     "typescript-eslint": "^8.48.0",
     "vite": "^7.3.1",
     "vitest": "^2.1.8",
-    "vitest-axe": "^0.1.0"
+    "vitest-axe": "^0.1.0",
+    "@stryker-mutator/core": "^8.7.1",
+    "@stryker-mutator/vitest-runner": "^8.7.1"
   }
 }
