@@ -53,6 +53,7 @@ mod mutation_tests;
 pub mod search;
 mod upgrade_tests;
 mod fuzz_tests;
+mod property_tests;
 
 // Re-export for convenience
 pub use contribution::{ContributionPage, ContributionRecord};
