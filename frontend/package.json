@@ -14,6 +14,7 @@
     "test:coverage:watch": "vitest --coverage",
     "lhci": "lhci autorun --config .lighthouserc.json --upload.target temporary-public-storage",
     "test:e2e": "vitest run src/test/integration",
+    "test:e2e:playwright": "playwright test",
     "test:e2e:testnet": "tsx src/test/e2e-testnet/testnet.e2e.ts"
   },
   "dependencies": {
