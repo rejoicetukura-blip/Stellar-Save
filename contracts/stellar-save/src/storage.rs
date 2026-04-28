@@ -28,6 +28,9 @@ pub enum StorageKey {
     /// Keys for payout records.
     Payout(PayoutKey),
 
+    /// Keys for refund records.
+    Refund(RefundKey),
+
     /// Keys for various counters and metadata.
     Counter(CounterKey),
 
@@ -184,6 +187,14 @@ pub enum ContributionKey {
 
 /// Storage keys for payout records.
 ///
+/// Storage keys for refund records.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+pub enum RefundKey {
+    /// Refund record: REFUND_{group_id}_{cycle}_{address}
+    Record(u64, u32, Address),
+}
+
 /// Payouts are tracked per group per cycle to maintain transparency
 /// and enable payout history queries.
 #[contracttype]
@@ -414,6 +425,11 @@ impl StorageKeyBuilder {
     }
 
     // Payout key builders
+
+    /// Creates a key for refund records.
+    pub fn refund_record(group_id: u64, cycle: u32, address: Address) -> StorageKey {
+        StorageKey::Refund(RefundKey::Record(group_id, cycle, address))
+    }
 
     /// Creates a key for payout records.
     pub fn payout_record(group_id: u64, cycle: u32) -> StorageKey {

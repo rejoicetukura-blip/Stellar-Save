@@ -34,6 +34,7 @@ pub mod payout_executor;
 pub mod penalty;
 pub mod pool;
 pub mod rating;
+pub mod refund;
 pub mod status;
 pub mod storage;
 pub mod storage_benchmark;
@@ -62,6 +63,7 @@ pub use group::{Group, GroupStatus};
 pub use payout::PayoutRecord;
 pub use pool::{PoolCalculator, PoolInfo};
 pub use rating::{GroupRating, RatingAggregate, RatingEntry};
+pub use refund::RefundRecord;
 pub use search::{SearchParams, SearchResult};
 #[cfg(test)]
 use soroban_sdk::testutils::{Events, Ledger};
@@ -2781,6 +2783,29 @@ impl StellarSaveContract {
         // let native_token = token::Client::new(&env, &native_token_address);
         // native_token.balance(&env.current_contract_address())
         0
+    }
+
+    /// Request a refund for a contribution made in error or when a group fails to activate.
+    ///
+    /// Refund is allowed when:
+    /// - Group is `Pending` or `Cancelled`, OR
+    /// - Group is `Active`/`Paused` but no payout has been processed for this cycle yet.
+    ///
+    /// The `caller` must be the contributor themselves or the group creator.
+    ///
+    /// # Errors
+    /// - `GroupNotFound`        - Group does not exist
+    /// - `ContributionNotFound` - No contribution found for caller/group/cycle
+    /// - `AlreadyRefunded`      - Contribution already refunded
+    /// - `RefundNotEligible`    - Group state does not allow refunds
+    /// - `Unauthorized`         - Caller is neither the contributor nor the group creator
+    pub fn request_refund(
+        env: Env,
+        group_id: u64,
+        cycle: u32,
+        caller: Address,
+    ) -> Result<RefundRecord, StellarSaveError> {
+        refund::request_refund(&env, group_id, cycle, caller)
     }
 
     /// Gets the total amount contributed by a member across all cycles.

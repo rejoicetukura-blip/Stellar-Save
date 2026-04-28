@@ -99,6 +99,14 @@ pub enum StellarSaveError {
     /// Error Code: 6002
     RewardNotEligible = 6002,
 
+    /// The contribution has already been refunded.
+    /// Error Code: 6003
+    AlreadyRefunded = 6003,
+
+    /// Refund is not eligible: group is active and payout has already occurred for this cycle.
+    /// Error Code: 6004
+    RefundNotEligible = 6004,
+
     // System-related errors (9000-9999)
     /// An internal contract error occurred.
     /// Error Code: 9001
@@ -233,6 +241,12 @@ impl StellarSaveError {
             }
             StellarSaveError::RewardNotEligible => {
                 "You are not eligible to claim a completion reward. Only members who completed all cycles are eligible."
+            }
+            StellarSaveError::AlreadyRefunded => {
+                "This contribution has already been refunded."
+            }
+            StellarSaveError::RefundNotEligible => {
+                "Refund is not eligible: the group is active and a payout has already occurred for this cycle."
             }
 
             // System-related errors
@@ -410,6 +424,12 @@ impl ErrorRecoveryStrategy {
             }
             StellarSaveError::RewardNotEligible => {
                 "Only members who contributed in every cycle are eligible. Verify your contribution history."
+            }
+            StellarSaveError::AlreadyRefunded => {
+                "This contribution has already been refunded. Each contribution can only be refunded once."
+            }
+            StellarSaveError::RefundNotEligible => {
+                "Refund is not eligible. The group is active and a payout has already occurred for this cycle."
             }
 
             // System errors - recovery strategies

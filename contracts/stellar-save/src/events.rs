@@ -284,26 +284,15 @@ pub struct PenaltyRecovered {
     pub recovered_at: u64,
 }
 
-/// Event emitted when a group creator extends the contribution deadline for a cycle.
+/// Event emitted when a contribution is refunded.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CycleDeadlineExtended {
+pub struct RefundIssued {
     pub group_id: u64,
+    pub member: Address,
+    pub amount: i128,
     pub cycle: u32,
-    pub extension_seconds: u64,
-    pub new_deadline: u64,
-    pub extended_by: Address,
-    pub extended_at: u64,
-}
-
-/// Event emitted when a group is cloned from an existing group.
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct GroupCloned {
-    pub original_group_id: u64,
-    pub new_group_id: u64,
-    pub creator: Address,
-    pub cloned_at: u64,
+    pub refunded_at: u64,
 }
 
 impl EventEmitter {
@@ -428,6 +417,24 @@ impl EventEmitter {
             completed_at,
         };
         env.events().publish(("group_completed",), event);
+    }
+
+    pub fn emit_refund_issued(
+        env: &Env,
+        group_id: u64,
+        member: Address,
+        amount: i128,
+        cycle: u32,
+        refunded_at: u64,
+    ) {
+        let event = RefundIssued {
+            group_id,
+            member,
+            amount,
+            cycle,
+            refunded_at,
+        };
+        env.events().publish(("refund_issued",), event);
     }
 
     pub fn emit_group_status_changed(
