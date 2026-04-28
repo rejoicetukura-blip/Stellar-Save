@@ -49,6 +49,7 @@ mod migration_tests;
 mod milestone_tests;
 pub mod milestones;
 mod multi_token_tests;
+mod mutation_tests;
 pub mod search;
 mod upgrade_tests;
 mod fuzz_tests;
