@@ -20,6 +20,7 @@ import { createV2Router } from './routes/v2';
 import { metricsMiddleware, metricsHandler } from './metrics';
 import { requestLogger } from './logger';
 import { createRateLimiterMiddleware } from './rate_limiter';
+import { createWebhookRouter } from './routes/webhooks';
 
 dotenv.config();
 
@@ -147,6 +148,7 @@ const services = { engine, abTest, exportService, backupService, backupScheduler
 app.use('/api', versionMiddleware);
 app.use('/api/v1', createV1Router(services));
 app.use('/api/v2', createV2Router(services));
+app.use('/api/webhooks', createWebhookRouter());
 
 // ── Legacy unversioned routes (redirect to v1 for backward compatibility) ────
 app.use((req, res, next) => {
