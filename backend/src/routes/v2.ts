@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { V1Services } from './v1';
+import { getSorobanPool } from '../lib/soroban';
 
 /**
  * Transforms a v1 response shape into v2 shape.
@@ -13,9 +14,9 @@ export function createV2Router(services: V1Services): Router {
   const router = Router();
   const { engine, backupService } = services;
 
-  // Health — v2 adds uptime
+  // Health — v2 adds uptime and pool metrics
   router.get('/health', (_req: Request, res: Response) => {
-    res.json(migrateV1ToV2({ status: 'ok', version: 'v2', uptime: process.uptime() }));
+    res.json(migrateV1ToV2({ status: 'ok', version: 'v2', uptime: process.uptime(), sorobanPool: getSorobanPool().metrics() }));
   });
 
   // Recommendations — v2 always uses collaborative filtering and returns richer metadata

@@ -11,6 +11,7 @@ import { ContractEventIndexer } from '../contract_event_indexer';
 import { AnalyticsService } from '../analytics_service';
 import { createAnalyticsMiddlewareStack } from '../analytics_middleware';
 import { Group, UserInteraction, UserPreference } from '../models';
+import { getSorobanPool } from '../lib/soroban';
 
 // ── Shared service instances (passed in from app) ────────────────────────────
 export interface V1Services {
@@ -76,7 +77,7 @@ export function createV1Router(services: V1Services): Router {
 
   // Health
   router.get('/health', (_req, res) => {
-    res.json({ status: 'ok', version: 'v1' });
+    res.json({ status: 'ok', version: 'v1', sorobanPool: getSorobanPool().metrics() });
   });
 
   // Export
