@@ -24,6 +24,7 @@ const ErrorPage = lazy(() => import("../pages/ErrorPage"));
 const TemplateGalleryPage = lazy(() => import("../pages/TemplateGalleryPage"));
 const AnalyticsDashboardPage = lazy(() => import("../pages/AnalyticsDashboardPage"));
 const JoinGroupPage = lazy(() => import("../pages/JoinGroupPage"));
+const JoinViaInvite = lazy(() => import("../pages/JoinViaInvite"));
 const MemberProfilePage = lazy(() => import("../pages/MemberProfilePage"));
 /**
  * Centralized route configuration.
@@ -147,7 +148,7 @@ export const routeConfig: RouteConfig[] = [
   },
   {
     path: ROUTES.GROUP_JOIN,
-    component: JoinGroupPage,
+    component: JoinViaInvite,
     protected: false,
     title: "Join Group - Stellar Save",
     description: "Join a savings group via invitation link",
