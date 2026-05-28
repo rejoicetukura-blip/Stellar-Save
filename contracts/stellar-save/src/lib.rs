@@ -86,6 +86,12 @@ pub struct ContractConfig {
     pub max_members: u32,
     pub min_cycle_duration: u64,
     pub max_cycle_duration: u64,
+    /// Optional treasury address that receives the protocol creation fee.
+    /// When `None`, no fee is charged.
+    pub treasury: Option<Address>,
+    /// Protocol fee charged per group creation in stroops.
+    /// Only applied when `treasury` is `Some`. Zero means no fee.
+    pub creation_fee: i128,
 }
 
 impl ContractConfig {
@@ -96,6 +102,7 @@ impl ContractConfig {
             && self.max_members >= self.min_members
             && self.min_cycle_duration > 0
             && self.max_cycle_duration >= self.min_cycle_duration
+            && self.creation_fee >= 0
     }
 }
 
@@ -531,11 +538,34 @@ impl StellarSaveContract {
             .persistent()
             .set(&token_config_key, &token_config);
 
-        // 10. Emit GroupCreated Event (include token_address as second data field)
+        // 10. Charge optional protocol creation fee
+        let current_time = env.ledger().timestamp();
+        if let Some(config) = env
+            .storage()
+            .persistent()
+            .get::<_, ContractConfig>(&config_key)
+        {
+            if config.creation_fee > 0 {
+                if let Some(treasury) = config.treasury {
+                    let token_client =
+                        soroban_sdk::token::TokenClient::new(&env, &token_address);
+                    token_client.transfer(&creator, &treasury, &config.creation_fee);
+                    EventEmitter::emit_fee_paid(
+                        &env,
+                        creator.clone(),
+                        treasury,
+                        config.creation_fee,
+                        current_time,
+                    );
+                }
+            }
+        }
+
+        // 11. Emit GroupCreated Event (include token_address as second data field)
         env.events()
             .publish((Symbol::new(&env, "GroupCreated"), creator), (group_id, token_address));
 
-        // 11. Return Group ID
+        // 12. Return Group ID
         Ok(group_id)
     }
 
@@ -5857,6 +5887,100 @@ mod tests {
     //     let active_only = client.list_groups(&0, &10, &Some(GroupStatus::Active));
     //     assert_eq!(active_only.len(), 1);
     // }
+
+    #[test]
+    fn test_create_group_charges_protocol_fee() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        let creator = Address::generate(&env);
+        let treasury = Address::generate(&env);
+
+        // Register a mock token and mint to creator
+        let token_address = env
+            .register_stellar_asset_contract_v2(Address::generate(&env))
+            .address();
+        let token_client = soroban_sdk::token::StellarAssetClient::new(&env, &token_address);
+        token_client.mint(&creator, &1_000_000_000);
+
+        let creation_fee: i128 = 5_000_000; // 0.5 XLM
+
+        // Store config with treasury and creation_fee
+        let config = ContractConfig {
+            admin: admin.clone(),
+            min_contribution: 1,
+            max_contribution: 1_000_000_000,
+            min_members: 2,
+            max_members: 100,
+            min_cycle_duration: 1,
+            max_cycle_duration: 31_536_000,
+            treasury: Some(treasury.clone()),
+            creation_fee,
+        };
+        env.storage()
+            .persistent()
+            .set(&StorageKeyBuilder::contract_config(), &config);
+
+        let token_balance_before =
+            soroban_sdk::token::TokenClient::new(&env, &token_address).balance(&treasury);
+
+        client.create_group(&creator, &100_000_000, &3600, &5, &token_address, &0);
+
+        let token_balance_after =
+            soroban_sdk::token::TokenClient::new(&env, &token_address).balance(&treasury);
+
+        // Treasury should have received the creation fee
+        assert_eq!(token_balance_after - token_balance_before, creation_fee);
+    }
+
+    #[test]
+    fn test_create_group_no_fee_when_treasury_none() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        let creator = Address::generate(&env);
+
+        let token_address = env
+            .register_stellar_asset_contract_v2(Address::generate(&env))
+            .address();
+        let token_client = soroban_sdk::token::StellarAssetClient::new(&env, &token_address);
+        token_client.mint(&creator, &1_000_000_000);
+
+        // Config with no treasury — fee should not be charged
+        let config = ContractConfig {
+            admin: admin.clone(),
+            min_contribution: 1,
+            max_contribution: 1_000_000_000,
+            min_members: 2,
+            max_members: 100,
+            min_cycle_duration: 1,
+            max_cycle_duration: 31_536_000,
+            treasury: None,
+            creation_fee: 5_000_000,
+        };
+        env.storage()
+            .persistent()
+            .set(&StorageKeyBuilder::contract_config(), &config);
+
+        let creator_balance_before =
+            soroban_sdk::token::TokenClient::new(&env, &token_address).balance(&creator);
+
+        client.create_group(&creator, &100_000_000, &3600, &5, &token_address, &0);
+
+        let creator_balance_after =
+            soroban_sdk::token::TokenClient::new(&env, &token_address).balance(&creator);
+
+        // Creator balance unchanged — no fee deducted
+        assert_eq!(creator_balance_before, creator_balance_after);
+    }
 
     #[test]
     fn test_get_total_groups_created() {

@@ -300,6 +300,16 @@ pub struct GroupRated {
     pub rated_at: u64,
 }
 
+/// Event emitted when a protocol creation fee is paid by a group creator.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FeePaid {
+    pub creator: Address,
+    pub treasury: Address,
+    pub amount: i128,
+    pub paid_at: u64,
+}
+
 /// Event emitted when a penalty is applied to a member for a missed contribution.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -849,6 +859,22 @@ impl EventEmitter {
             rated_at,
         };
         env.events().publish(("group_rated",), event);
+    }
+
+    pub fn emit_fee_paid(
+        env: &Env,
+        creator: Address,
+        treasury: Address,
+        amount: i128,
+        paid_at: u64,
+    ) {
+        let event = FeePaid {
+            creator,
+            treasury,
+            amount,
+            paid_at,
+        };
+        env.events().publish(("fee_paid",), event);
     }
 
     pub fn emit_cycle_deadline_extended(
