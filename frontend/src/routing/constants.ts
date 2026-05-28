@@ -24,7 +24,7 @@ export const ROUTES = {
   TEMPLATES: "/templates",
   ANALYTICS: "/analytics",
   MEMBER_PROFILE: "/members/:address",
-  SETTINGS_NOTIFICATIONS: "/settings/notifications",
+  GROUP_JOIN: "/join",
 } as const;
 
 /**
@@ -40,4 +40,5 @@ export const buildRoute = {
   groupCalendar: (groupId: string) => `/groups/${groupId}/calendar`,
   groupMembers: (groupId: string) => `/groups/${groupId}/members`,
   memberProfile: (address: string) => `/members/${address}`,
+  groupJoin: (groupId: string) => `/join?groupId=${encodeURIComponent(groupId)}`,
 } as const;
