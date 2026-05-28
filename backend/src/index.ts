@@ -20,6 +20,9 @@ import { createV2Router } from './routes/v2';
 import { metricsMiddleware, metricsHandler } from './metrics';
 import { requestLogger } from './logger';
 import { createRateLimiterMiddleware } from './rate_limiter';
+import { createAuthRouter } from './routes/auth';
+import { createUserRouter } from './routes/user';
+import { createRateLimiterMiddleware, createAuthRateLimiterMiddleware } from './rate_limiter';
 
 dotenv.config();
 
@@ -30,6 +33,11 @@ app.use(requestLogger);
 app.use(metricsMiddleware);
 app.get('/metrics', metricsHandler);
 app.use(createRateLimiterMiddleware());
+
+// Stricter rate limiting on auth/admin endpoints: 10 req / 15 min per IP
+const authRateLimiter = createAuthRateLimiterMiddleware();
+app.use('/api/admin', authRateLimiter);
+app.use('/graphql', authRateLimiter);
 
 // ========== CACHE ROUTES (Issue #563) ==========
 
@@ -142,6 +150,12 @@ if (process.env.INDEXER_ENABLED === 'true') {
 }
 
 const services = { engine, abTest, exportService, backupService, backupScheduler, recoveryService, backupMonitor, eventIndexer };
+
+// ── Auth routes (public — no JWT required) ───────────────────────────────────
+app.use('/api/auth', createAuthRouter());
+
+// ── User routes (JWT protected) ───────────────────────────────────────────────
+app.use('/api/user', createUserRouter());
 
 // ── Versioned API routes ──────────────────────────────────────────────────────
 app.use('/api', versionMiddleware);
