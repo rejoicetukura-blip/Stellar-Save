@@ -496,6 +496,14 @@ impl Group {
     pub fn add_member(&mut self) {
         self.member_count += 1;
     }
+
+    /// Returns true if the group is currently paused.
+    ///
+    /// A group is considered paused when either the `paused` flag is set
+    /// or the `status` is `GroupStatus::Paused`.
+    pub fn is_paused(&self) -> bool {
+        self.paused || self.status == GroupStatus::Paused
+    }
 }
 
 #[cfg(test)]
@@ -798,5 +806,30 @@ mod tests {
         assert!(!GroupStatus::Paused.is_terminal());
         assert!(GroupStatus::Completed.is_terminal());
         assert!(GroupStatus::Cancelled.is_terminal());
+    }
+
+    // is_paused tests
+    #[test]
+    fn test_is_paused_false_on_active_group() {
+        let env = Env::default();
+        let group = make_group(&env, 3, 0);
+        // Newly created group: paused=false, status=Active
+        assert!(!group.is_paused());
+    }
+
+    #[test]
+    fn test_is_paused_true_when_paused_flag_set() {
+        let env = Env::default();
+        let mut group = make_group(&env, 3, 0);
+        group.paused = true;
+        assert!(group.is_paused());
+    }
+
+    #[test]
+    fn test_is_paused_true_when_status_paused() {
+        let env = Env::default();
+        let mut group = make_group(&env, 3, 0);
+        group.status = GroupStatus::Paused;
+        assert!(group.is_paused());
     }
 }

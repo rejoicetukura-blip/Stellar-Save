@@ -1734,6 +1734,18 @@ impl StellarSaveContract {
     // ISSUE #425: Group Status Management
     // ============================================================================
 
+    /// Returns true if the group is currently paused.
+    ///
+    /// Reads the group from storage and checks the paused flag / status.
+    /// Returns false for a non-existent group_id (graceful handling).
+    pub fn is_paused(env: Env, group_id: u64) -> bool {
+        let key = StorageKeyBuilder::group_data(group_id);
+        match env.storage().persistent().get::<_, Group>(&key) {
+            Some(group) => group.is_paused(),
+            None => false,
+        }
+    }
+
     /// Pauses a group, preventing contributions and payouts.
     ///
     /// # Arguments
@@ -12932,5 +12944,64 @@ mod tests {
         // Only member_joined event — no member_referred
         let events = env.events().all();
         assert_eq!(events.len(), 1);
+    }
+}
+
+    // =========================================================================
+    // is_paused tests (issue #761)
+    // =========================================================================
+
+    #[test]
+    fn test_is_paused_false_on_active_group() {
+        let env = Env::default();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        let creator = Address::generate(&env);
+        let group_id = 1u64;
+
+        let group = Group::new(group_id, creator.clone(), 100, 3600, 5, 2, 1000, 0);
+        env.storage()
+            .persistent()
+            .set(&StorageKeyBuilder::group_data(group_id), &group);
+
+        assert!(!client.is_paused(&group_id));
+    }
+
+    #[test]
+    fn test_is_paused_true_after_pause_group() {
+        let env = Env::default();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+        let creator = Address::generate(&env);
+        let group_id = 1u64;
+
+        // Create an Active group
+        let mut group = Group::new(group_id, creator.clone(), 100, 3600, 5, 2, 1000, 0);
+        group.status = GroupStatus::Active;
+        env.storage()
+            .persistent()
+            .set(&StorageKeyBuilder::group_data(group_id), &group);
+        env.storage().persistent().set(
+            &StorageKeyBuilder::group_status(group_id),
+            &GroupStatus::Active,
+        );
+
+        assert!(!client.is_paused(&group_id));
+
+        // Pause the group
+        env.mock_all_auths();
+        client.pause_group(&group_id, &creator);
+
+        assert!(client.is_paused(&group_id));
+    }
+
+    #[test]
+    fn test_is_paused_false_for_nonexistent_group() {
+        let env = Env::default();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+
+        // Non-existent group_id returns false gracefully
+        assert!(!client.is_paused(&9999u64));
     }
 }
