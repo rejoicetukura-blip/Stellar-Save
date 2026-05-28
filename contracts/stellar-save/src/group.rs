@@ -2,6 +2,10 @@
 use core::fmt;
 use soroban_sdk::{contracttype, Address};
 
+/// Protocol-level maximum number of members per group.
+/// Prevents unbounded storage growth and gas exhaustion.
+pub const MAX_MEMBERS: u32 = 20;
+
 /// Configuration for the token used by a savings group.
 ///
 /// Stored separately from `Group` under `GroupKey::TokenConfig(group_id)` to
@@ -253,6 +257,10 @@ pub struct Group {
     /// `list_groups()` results and are only visible via `list_archived_groups()`.
     /// This reduces active storage scan costs and improves query performance.
     pub archived: bool,
+
+    /// How the payout recipient is selected each cycle.
+    /// Defaults to Sequential (join-order rotation).
+    pub payout_order: crate::payout::PayoutOrder,
 }
 impl Group {
     /// Creates a new Group with validation.
@@ -366,6 +374,7 @@ impl Group {
             description: None,
             image_url: None,
             archived: false,
+            payout_order: crate::payout::PayoutOrder::Sequential,
         }
     }
     /// Checks if the group has completed all cycles.
@@ -495,6 +504,14 @@ impl Group {
     /// Increments the member_count.
     pub fn add_member(&mut self) {
         self.member_count += 1;
+    }
+
+    /// Returns true if the group is currently paused.
+    ///
+    /// A group is considered paused when either the `paused` flag is set
+    /// or the `status` is `GroupStatus::Paused`.
+    pub fn is_paused(&self) -> bool {
+        self.paused || self.status == GroupStatus::Paused
     }
 }
 
@@ -798,5 +815,30 @@ mod tests {
         assert!(!GroupStatus::Paused.is_terminal());
         assert!(GroupStatus::Completed.is_terminal());
         assert!(GroupStatus::Cancelled.is_terminal());
+    }
+
+    // is_paused tests
+    #[test]
+    fn test_is_paused_false_on_active_group() {
+        let env = Env::default();
+        let group = make_group(&env, 3, 0);
+        // Newly created group: paused=false, status=Active
+        assert!(!group.is_paused());
+    }
+
+    #[test]
+    fn test_is_paused_true_when_paused_flag_set() {
+        let env = Env::default();
+        let mut group = make_group(&env, 3, 0);
+        group.paused = true;
+        assert!(group.is_paused());
+    }
+
+    #[test]
+    fn test_is_paused_true_when_status_paused() {
+        let env = Env::default();
+        let mut group = make_group(&env, 3, 0);
+        group.status = GroupStatus::Paused;
+        assert!(group.is_paused());
     }
 }
