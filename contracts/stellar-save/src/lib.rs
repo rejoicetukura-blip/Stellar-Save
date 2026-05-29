@@ -8893,4 +8893,193 @@ mod tests {
         assert_eq!(GroupStatus::from_u32(4), Some(GroupStatus::Cancelled));
         assert_eq!(GroupStatus::from_u32(5), None);
     }
+
+    // Tests for member groups index functionality
+
+    #[test]
+    fn test_list_groups_by_member_empty() {
+        let env = Env::default();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+
+        let member = Address::generate(&env);
+
+        // Test: Member not in any groups
+        let groups = client.list_groups_by_member(&member);
+        assert_eq!(groups.len(), 0);
+    }
+
+    #[test]
+    fn test_list_groups_by_member_single_group() {
+        let env = Env::default();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+
+        let creator = Address::generate(&env);
+        let member = Address::generate(&env);
+
+        // Create group and add member
+        let group_id = client.create_group(&creator, &100, &3600, &3);
+        client.join_group(&group_id, &member);
+
+        // Test: Member in one group
+        let groups = client.list_groups_by_member(&member);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups.get(0).unwrap(), group_id);
+    }
+
+    #[test]
+    fn test_list_groups_by_member_multiple_groups() {
+        let env = Env::default();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+
+        let creator1 = Address::generate(&env);
+        let creator2 = Address::generate(&env);
+        let creator3 = Address::generate(&env);
+        let member = Address::generate(&env);
+
+        // Create multiple groups
+        let group_id1 = client.create_group(&creator1, &100, &3600, &3);
+        let group_id2 = client.create_group(&creator2, &200, &7200, &4);
+        let group_id3 = client.create_group(&creator3, &300, &10800, &5);
+
+        // Add member to all groups
+        client.join_group(&group_id1, &member);
+        client.join_group(&group_id2, &member);
+        client.join_group(&group_id3, &member);
+
+        // Test: Member in multiple groups
+        let groups = client.list_groups_by_member(&member);
+        assert_eq!(groups.len(), 3);
+        
+        // Verify all group IDs are present (order should be join order)
+        assert_eq!(groups.get(0).unwrap(), group_id1);
+        assert_eq!(groups.get(1).unwrap(), group_id2);
+        assert_eq!(groups.get(2).unwrap(), group_id3);
+    }
+
+    #[test]
+    fn test_list_groups_by_member_different_members() {
+        let env = Env::default();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+
+        let creator = Address::generate(&env);
+        let member1 = Address::generate(&env);
+        let member2 = Address::generate(&env);
+
+        // Create groups
+        let group_id1 = client.create_group(&creator, &100, &3600, &3);
+        let group_id2 = client.create_group(&creator, &200, &7200, &4);
+
+        // Member1 joins group1, Member2 joins group2
+        client.join_group(&group_id1, &member1);
+        client.join_group(&group_id2, &member2);
+
+        // Test: Each member should only see their own groups
+        let groups1 = client.list_groups_by_member(&member1);
+        let groups2 = client.list_groups_by_member(&member2);
+
+        assert_eq!(groups1.len(), 1);
+        assert_eq!(groups1.get(0).unwrap(), group_id1);
+
+        assert_eq!(groups2.len(), 1);
+        assert_eq!(groups2.get(0).unwrap(), group_id2);
+    }
+
+    #[test]
+    fn test_member_groups_index_maintained_on_join() {
+        let env = Env::default();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+
+        let creator = Address::generate(&env);
+        let member = Address::generate(&env);
+
+        // Create group
+        let group_id = client.create_group(&creator, &100, &3600, &3);
+
+        // Verify member has no groups initially
+        let groups_before = client.list_groups_by_member(&member);
+        assert_eq!(groups_before.len(), 0);
+
+        // Join group
+        client.join_group(&group_id, &member);
+
+        // Verify member groups index is updated
+        let groups_after = client.list_groups_by_member(&member);
+        assert_eq!(groups_after.len(), 1);
+        assert_eq!(groups_after.get(0).unwrap(), group_id);
+
+        // Verify the index is stored correctly by checking storage directly
+        let user_groups_key = StorageKeyBuilder::user_member_groups(member.clone());
+        let stored_groups: Vec<u64> = env
+            .storage()
+            .persistent()
+            .get(&user_groups_key)
+            .unwrap();
+        assert_eq!(stored_groups.len(), 1);
+        assert_eq!(stored_groups.get(0).unwrap(), group_id);
+    }
+
+    #[test]
+    fn test_member_groups_index_consistency() {
+        let env = Env::default();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+
+        let creator = Address::generate(&env);
+        let member = Address::generate(&env);
+
+        // Create multiple groups
+        let group_id1 = client.create_group(&creator, &100, &3600, &3);
+        let group_id2 = client.create_group(&creator, &200, &7200, &4);
+
+        // Join groups in specific order
+        client.join_group(&group_id1, &member);
+        client.join_group(&group_id2, &member);
+
+        // Verify order is maintained
+        let groups = client.list_groups_by_member(&member);
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups.get(0).unwrap(), group_id1);
+        assert_eq!(groups.get(1).unwrap(), group_id2);
+
+        // Verify member profile exists in both groups
+        let profile1 = client.get_member(&group_id1, &member);
+        let profile2 = client.get_member(&group_id2, &member);
+
+        assert_eq!(profile1.address, member);
+        assert_eq!(profile1.group_id, group_id1);
+        assert_eq!(profile2.address, member);
+        assert_eq!(profile2.group_id, group_id2);
+    }
+
+    #[test]
+    fn test_member_groups_index_large_scale() {
+        let env = Env::default();
+        let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
+
+        let creator = Address::generate(&env);
+        let member = Address::generate(&env);
+        let mut expected_groups = Vec::new(&env);
+
+        // Create and join 10 groups
+        for i in 0..10 {
+            let group_id = client.create_group(&creator, &(100 + i as i128), &3600, &3);
+            client.join_group(&group_id, &member);
+            expected_groups.push_back(group_id);
+        }
+
+        // Verify all groups are tracked
+        let groups = client.list_groups_by_member(&member);
+        assert_eq!(groups.len(), 10);
+
+        // Verify order is maintained
+        for i in 0..10 {
+            assert_eq!(groups.get(i).unwrap(), expected_groups.get(i).unwrap());
+        }
+    }
 }
