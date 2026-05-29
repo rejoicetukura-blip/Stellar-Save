@@ -785,14 +785,15 @@ impl StellarSaveContract {
         }
 
         // 4. Validate metadata
-        // Name: 3-50 characters
-        if name.len() < 3 || name.len() > 50 {
+        // Name: 1–64 bytes, no null bytes
+        if name.len() < 1 {
             return Err(StellarSaveError::InvalidMetadata);
         }
+        crate::helpers::validate_group_string(&name, 64)?;
 
-        // Description: 0-500 characters
-        if description.len() > 500 {
-            return Err(StellarSaveError::InvalidMetadata);
+        // Description: 0–256 bytes, no null bytes
+        if !description.is_empty() {
+            crate::helpers::validate_group_string(&description, 256)?;
         }
 
         // 5. Update group metadata
@@ -13047,6 +13048,132 @@ mod tests {
         );
 
         assert_eq!(result, Ok(()));
+    }
+
+    // ── String validation boundary tests (64-byte name, 256-byte description) ──
+
+    #[test]
+    fn test_update_group_metadata_name_exactly_64_bytes() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let creator = Address::generate(&env);
+        let group_id = 1u64;
+        let group = Group::new(group_id, creator.clone(), 1_000_000, 604800, 10, 2, 0, 0);
+        env.storage()
+            .persistent()
+            .set(&StorageKeyBuilder::group_data(group_id), &group);
+
+        // 64 ASCII bytes — exactly at the limit
+        let name = String::from_str(&env, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        assert_eq!(name.len(), 64);
+
+        let result = StellarSaveContract::update_group_metadata(
+            env.clone(),
+            group_id,
+            creator,
+            name,
+            String::from_str(&env, ""),
+            String::from_str(&env, ""),
+        );
+        assert_eq!(result, Ok(()));
+    }
+
+    #[test]
+    fn test_update_group_metadata_name_65_bytes_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let creator = Address::generate(&env);
+        let group_id = 1u64;
+        let group = Group::new(group_id, creator.clone(), 1_000_000, 604800, 10, 2, 0, 0);
+        env.storage()
+            .persistent()
+            .set(&StorageKeyBuilder::group_data(group_id), &group);
+
+        // 65 ASCII bytes — one over the limit
+        let name = String::from_str(&env, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        assert_eq!(name.len(), 65);
+
+        let result = StellarSaveContract::update_group_metadata(
+            env.clone(),
+            group_id,
+            creator,
+            name,
+            String::from_str(&env, ""),
+            String::from_str(&env, ""),
+        );
+        assert_eq!(result, Err(StellarSaveError::InvalidMetadata));
+    }
+
+    #[test]
+    fn test_update_group_metadata_description_exactly_256_bytes() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let creator = Address::generate(&env);
+        let group_id = 1u64;
+        let group = Group::new(group_id, creator.clone(), 1_000_000, 604800, 10, 2, 0, 0);
+        env.storage()
+            .persistent()
+            .set(&StorageKeyBuilder::group_data(group_id), &group);
+
+        let desc = String::from_str(&env, &"a".repeat(256));
+        assert_eq!(desc.len(), 256);
+
+        let result = StellarSaveContract::update_group_metadata(
+            env.clone(),
+            group_id,
+            creator,
+            String::from_str(&env, "Valid Name"),
+            desc,
+            String::from_str(&env, ""),
+        );
+        assert_eq!(result, Ok(()));
+    }
+
+    #[test]
+    fn test_update_group_metadata_description_257_bytes_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let creator = Address::generate(&env);
+        let group_id = 1u64;
+        let group = Group::new(group_id, creator.clone(), 1_000_000, 604800, 10, 2, 0, 0);
+        env.storage()
+            .persistent()
+            .set(&StorageKeyBuilder::group_data(group_id), &group);
+
+        let desc = String::from_str(&env, &"a".repeat(257));
+        assert_eq!(desc.len(), 257);
+
+        let result = StellarSaveContract::update_group_metadata(
+            env.clone(),
+            group_id,
+            creator,
+            String::from_str(&env, "Valid Name"),
+            desc,
+            String::from_str(&env, ""),
+        );
+        assert_eq!(result, Err(StellarSaveError::InvalidMetadata));
+    }
+
+    #[test]
+    fn test_update_group_metadata_name_empty_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let creator = Address::generate(&env);
+        let group_id = 1u64;
+        let group = Group::new(group_id, creator.clone(), 1_000_000, 604800, 10, 2, 0, 0);
+        env.storage()
+            .persistent()
+            .set(&StorageKeyBuilder::group_data(group_id), &group);
+
+        let result = StellarSaveContract::update_group_metadata(
+            env.clone(),
+            group_id,
+            creator,
+            String::from_str(&env, ""),
+            String::from_str(&env, ""),
+            String::from_str(&env, ""),
+        );
+        assert_eq!(result, Err(StellarSaveError::InvalidMetadata));
     }
 
     // ── Dispute lifecycle tests ──────────────────────────────────────────────
