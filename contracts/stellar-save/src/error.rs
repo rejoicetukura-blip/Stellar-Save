@@ -159,6 +159,10 @@ pub enum StellarSaveError {
     /// The member has already voted on the current dispute.
     /// Error Code: 2005
     AlreadyVoted = 2005,
+
+    /// A payout is already in progress for this group; concurrent calls are rejected.
+    /// Error Code: 4004
+    ReentrancyDetected = 4004,
 }
 
 impl StellarSaveError {
@@ -288,6 +292,9 @@ impl StellarSaveError {
                 "The group has already been dissolved or completed."
             StellarSaveError::AlreadyVoted => {
                 "You have already raised a dispute for this group. Each member may only vote once per dispute round."
+            }
+            StellarSaveError::ReentrancyDetected => {
+                "A payout is already in progress for this group. Concurrent payout calls are not allowed."
             }
         }
     }
