@@ -1,5 +1,6 @@
 import { lazy, Suspense } from "react";
 import { Box, CircularProgress } from "@mui/material";
+import { FeedbackWidget } from "./components/FeedbackWidget";
 import "./App.css";
 
 const AppRouter = lazy(() =>
@@ -8,14 +9,7 @@ const AppRouter = lazy(() =>
 
 function RouteLoadingFallback() {
   return (
-    <Box
-      sx={{
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        minHeight: "100vh",
-      }}
-    >
+    <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh" }}>
       <CircularProgress />
     </Box>
   );
@@ -23,8 +17,11 @@ function RouteLoadingFallback() {
 
 export default function App() {
   return (
-    <Suspense fallback={<RouteLoadingFallback />}>
-      <AppRouter />
-    </Suspense>
+    <>
+      <Suspense fallback={<RouteLoadingFallback />}>
+        <AppRouter />
+      </Suspense>
+      <FeedbackWidget />
+    </>
   );
 }

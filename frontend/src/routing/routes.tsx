@@ -25,6 +25,7 @@ const JoinViaInvite = lazy(() => import("../pages/JoinViaInvite"));
 const MemberProfilePage = lazy(() => import("../pages/MemberProfilePage"));
 const NotificationSettings = lazy(() => import("../pages/settings/NotificationSettings"));
 const AboutPage = lazy(() => import("../pages/AboutPage"));
+const FeedbackAdminPage = lazy(() => import("../pages/FeedbackAdminPage"));
 const TransactionHistoryPage = lazy(() => import("../pages/TransactionHistoryPage"));
 
 export const routeConfig: RouteConfig[] = [
@@ -184,6 +185,13 @@ export const routeConfig: RouteConfig[] = [
     protected: false,
     title: "About - Stellar Save",
     description: "Learn about Stellar Save",
+  },
+  {
+    path: ROUTES.FEEDBACK_ADMIN,
+    component: FeedbackAdminPage,
+    protected: true,
+    title: "Feedback Dashboard - Stellar Save",
+    description: "Review and respond to user feedback",
   },
   {
     path: ROUTES.NOT_FOUND,

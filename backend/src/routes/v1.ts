@@ -11,6 +11,7 @@ import { RecoveryService } from '../recovery_service';
 import { BackupMonitor } from '../backup_monitor';
 import { ContractEventIndexer } from '../contract_event_indexer';
 import { AnalyticsService } from '../analytics_service';
+import { FeedbackService } from '../feedback_service';
 import { createAnalyticsMiddlewareStack, createAnalyticsCacheMiddleware } from '../analytics_middleware';
 import { Group, UserInteraction, UserPreference } from '../models';
 import { createNotificationRouter } from './notifications';
@@ -26,6 +27,7 @@ export interface V1Services {
   backupMonitor: BackupMonitor;
   eventIndexer: ContractEventIndexer;
   analyticsService: AnalyticsService;
+  feedbackService: FeedbackService;
 }
 
 export function createV1Router(services: V1Services): Router {
@@ -40,6 +42,7 @@ export function createV1Router(services: V1Services): Router {
     backupMonitor,
     eventIndexer,
     analyticsService,
+    feedbackService,
   } = services;
 
   // Setup analytics middleware
@@ -543,6 +546,53 @@ export function createV1Router(services: V1Services): Router {
     }
 
     csvStream.end();
+  });
+
+  // ── Feedback (Issue #1133) ───────────────────────────────────────────────────
+  // POST /feedback — submit feedback from any page
+  router.post('/feedback', async (req, res) => {
+    try {
+      const { userId, category, message, page } = req.body;
+      const userAgent = req.headers['user-agent'];
+      const item = await feedbackService.submit({ userId, category, message, page, userAgent });
+      res.status(201).json(item);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message ?? 'Failed to submit feedback' });
+    }
+  });
+
+  // GET /feedback — admin: list feedback with optional filters
+  router.get('/feedback', async (req, res) => {
+    const { category, status, limit, offset } = req.query;
+    const items = await feedbackService.list({
+      category: category as string,
+      status: status as string,
+      limit: limit ? parseInt(limit as string) : 50,
+      offset: offset ? parseInt(offset as string) : 0,
+    });
+    res.json({ count: items.length, items });
+  });
+
+  // POST /feedback/:id/vote — upvote a feedback item
+  router.post('/feedback/:id/vote', async (req, res) => {
+    try {
+      const item = await feedbackService.vote(req.params.id);
+      res.json(item);
+    } catch {
+      res.status(404).json({ error: 'Feedback not found' });
+    }
+  });
+
+  // PATCH /feedback/:id/respond — team response + optional status change
+  router.patch('/feedback/:id/respond', async (req, res) => {
+    try {
+      const { response, status } = req.body;
+      if (!response) return res.status(400).json({ error: 'response is required' });
+      const item = await feedbackService.respond(req.params.id, response, status);
+      res.json(item);
+    } catch {
+      res.status(404).json({ error: 'Feedback not found' });
+    }
   });
 
   return router;

@@ -26,6 +26,7 @@ export const ROUTES = {
   TRANSACTIONS: "/transactions",
   MEMBER_PROFILE: "/members/:address",
   ABOUT: "/about",
+  FEEDBACK_ADMIN: "/admin/feedback",
   NOT_FOUND: "/404",
   ERROR: "/500",
 } as const;

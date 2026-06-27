@@ -316,3 +316,25 @@ model MemberReputation {
   @@index([address])
   @@index([score])
 }
+
+// ========== FEEDBACK MODELS (Issue #1133) ==========
+
+model Feedback {
+  id          String   @id @default(cuid())
+  userId      String?  // null for anonymous submissions
+  category    String   // "bug" | "feature" | "general" | "other"
+  message     String
+  votes       Int      @default(0)
+  status      String   @default("open") // open | in_review | planned | resolved | closed
+  page        String?  // URL or page name where feedback was submitted
+  userAgent   String?
+  response    String?  // Team response/comment
+  respondedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
+  @@index([status])
+  @@index([votes])
+  @@index([createdAt])
+}

@@ -23,6 +23,7 @@ import { ContractEventIndexer } from './contract_event_indexer';
 import { WebPushService } from './web_push_service';
 import { versionMiddleware } from './versioning';
 import { createV1Router } from './routes/v1';
+import { FeedbackService } from './feedback_service';
 import { createV2Router } from './routes/v2';
 import { metricsMiddleware, metricsHandler } from './metrics';
 import { requestLogger } from './logger';
@@ -192,7 +193,7 @@ if (process.env.ANALYTICS_RESYNC_ENABLED === 'true') {
   startAnalyticsResyncJob(process.env.ANALYTICS_RESYNC_SCHEDULE || '0 * * * *'); // default: top of every hour
 }
 
-const services = { engine, abTest, exportService, backupService, backupScheduler, recoveryService, backupMonitor, eventIndexer };
+const services = { engine, abTest, exportService, backupService, backupScheduler, recoveryService, backupMonitor, eventIndexer, feedbackService: new FeedbackService(null) };
 
 // ── Auth routes (public — no JWT required) ───────────────────────────────────
 app.use('/api/auth', createAuthRouter());
