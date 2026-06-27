@@ -84,6 +84,20 @@ const envSchema = z.object({
     .default('http://localhost:9200'),
   ELASTICSEARCH_USERNAME: z.string().default('elastic'),
   ELASTICSEARCH_PASSWORD: z.string().default('changeme'),
+
+  // ── KYC (Issue #1024) ─────────────────────────────────────────────────────
+  KYC_PROVIDER_URL: z
+    .string()
+    .url()
+    .default('https://sandbox.kyc-provider.example.com'),
+  KYC_WEBHOOK_SECRET: z.string().default(''),
+
+  // ── Keeper/relayer (Issue #1026) ──────────────────────────────────────────
+  KEEPER_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+  KEEPER_SCHEDULE: z.string().default('*/5 * * * *'),
 });
 
 // ---------------------------------------------------------------------------
@@ -170,5 +184,15 @@ export const config = {
     node: env.ELASTICSEARCH_NODE,
     username: env.ELASTICSEARCH_USERNAME,
     password: env.ELASTICSEARCH_PASSWORD,
+  },
+
+  kyc: {
+    providerUrl: env.KYC_PROVIDER_URL,
+    webhookSecret: env.KYC_WEBHOOK_SECRET,
+  },
+
+  keeper: {
+    enabled: env.KEEPER_ENABLED,
+    schedule: env.KEEPER_SCHEDULE,
   },
 } as const;

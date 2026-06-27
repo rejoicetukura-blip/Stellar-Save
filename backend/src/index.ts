@@ -31,6 +31,10 @@ import { createWebhookRouter } from './routes/webhooks';
 import { getMemberReputation } from './reputation_service';
 import { createAuthRouter } from './routes/auth';
 import { createUserRouter } from './routes/user';
+import { createRampRouter } from './routes/ramp';
+import { createKycRouter } from './routes/kyc';
+import { createSep31Router } from './routes/sep31';
+import { startKeeperJob } from './jobs/keeper_job';
 
 const CSP_POLICY = [
   "default-src 'self'",
@@ -192,6 +196,11 @@ if (process.env.ANALYTICS_RESYNC_ENABLED === 'true') {
   startAnalyticsResyncJob(process.env.ANALYTICS_RESYNC_SCHEDULE || '0 * * * *'); // default: top of every hour
 }
 
+// Start keeper/relayer for automated payout execution (Issue #1026)
+if (config.keeper.enabled) {
+  startKeeperJob(config.keeper.schedule, process.env.CONTRACT_ID || '', config.stellar.rpcUrl);
+}
+
 const services = { engine, abTest, exportService, backupService, backupScheduler, recoveryService, backupMonitor, eventIndexer };
 
 // ── Auth routes (public — no JWT required) ───────────────────────────────────
@@ -199,6 +208,15 @@ app.use('/api/auth', createAuthRouter());
 
 // ── User routes (JWT protected) ───────────────────────────────────────────────
 app.use('/api/user', createUserRouter());
+
+// ── KYC routes (Issue #1024) ──────────────────────────────────────────────────
+app.use('/api/kyc', createKycRouter());
+
+// ── Fiat ramp routes (Issue #1023) ────────────────────────────────────────────
+app.use('/api/ramp', createRampRouter());
+
+// ── SEP-31 cross-border routes (Issue #1025) ──────────────────────────────────
+app.use('/api/sep31', createSep31Router());
 
 // ── Versioned API routes ──────────────────────────────────────────────────────
 app.use('/api', versionMiddleware);

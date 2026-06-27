@@ -316,3 +316,76 @@ model MemberReputation {
   @@index([address])
   @@index([score])
 }
+
+// ========== FIAT RAMP MODELS (Issue #1023) ==========
+
+model RampTransaction {
+  id             String   @id @default(cuid())
+  userId         String
+  type           String   // 'deposit' | 'withdraw'
+  anchorDomain   String
+  stellarAccount String
+  assetCode      String
+  assetIssuer    String?
+  amount         String?
+  anchorId       String?  // anchor's transaction id
+  status         String   @default("pending_user_transfer_start")
+  interactiveUrl String?
+  moreInfoUrl    String?
+  startedAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([anchorId])
+}
+
+// ========== KYC MODELS (Issue #1024) ==========
+
+model KycRecord {
+  id             String    @id @default(cuid())
+  userId         String    @unique
+  walletAddress  String
+  status         String    @default("pending") // pending, approved, rejected, expired
+  kycProviderId  String?
+  submittedAt    DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  reviewedAt     DateTime?
+
+  @@index([userId])
+  @@index([status])
+}
+
+model KycStatusEvent {
+  id         String   @id @default(cuid())
+  userId     String
+  oldStatus  String
+  newStatus  String
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// ========== CROSS-BORDER PAYMENT MODELS (Issue #1025) ==========
+
+model CrossBorderPayment {
+  id               String   @id @default(cuid())
+  groupId          String?
+  anchorDomain     String
+  sendAssetCode    String
+  receiveAssetCode String
+  amount           String
+  senderId         String
+  receiverId       String
+  anchorTxId       String?  @unique
+  status           String   @default("pending") // pending, completed, error, refunded
+  stellarAccount   String?
+  stellarMemo      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([groupId])
+  @@index([status])
+  @@index([anchorTxId])
+}
