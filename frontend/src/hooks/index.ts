@@ -44,3 +44,5 @@ export type {
   UseActivityFeedReturn,
 } from './useActivityFeed';
 export { useDiscoveryFeed } from './useDiscoveryFeed';
+
+export { useOfflineSyncInit, useSyncStatus, useIsOnline, useQueueAction } from './useOfflineSync';

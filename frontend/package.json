@@ -26,23 +26,23 @@
     "test:visual:ci": "percy exec -- playwright test --config=playwright.visual.config.ts --reporter=github"
   },
   "dependencies": {
-    "@tanstack/react-query": "5.80.7",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^7.3.9",
     "@mui/material": "^7.3.9",
     "@mui/x-data-grid": "^7.28.3",
-    "@mui/icons-material": "^7.3.9",
     "@stellar/freighter-api": "^6.0.1",
     "@stellar/stellar-sdk": "^14.5.0",
     "@tanstack/react-query": "^5.100.14",
     "i18next": "24.2.3",
+    "idb": "^8.0.3",
     "react": "^19.2.0",
     "react-big-calendar": "^1.19.4",
     "react-dom": "^19.2.0",
     "react-i18next": "15.5.1",
     "react-router-dom": "^7.13.2",
     "recharts": "^3.8.1",
+    "workbox-window": "^7.4.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {

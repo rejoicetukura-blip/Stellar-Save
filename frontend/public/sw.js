@@ -7,11 +7,14 @@
  *  3. Background push events (Web Push API)
  *  4. Scheduled contribution reminder alarms via postMessage
  *  5. Notification click → focus/open app and navigate to group detail
+ *  6. Background sync for offline actions
  */
 
-const CACHE_NAME = 'stellar-save-v1';
+const CACHE_NAME = 'stellar-save-v2';
 const STATIC_ASSETS = ['/', '/offline.html', '/manifest.json', '/vite.svg'];
 const APP_ORIGIN = self.location.origin;
+const API_CACHE = 'stellar-save-api-v2';
+const API_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 // ─── Install: pre-cache static shell ─────────────────────────────────────────
 self.addEventListener('install', (event) => {
@@ -27,7 +30,11 @@ self.addEventListener('activate', (event) => {
     caches
       .keys()
       .then((keys) =>
-        Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+        Promise.all(
+          keys
+            .filter((k) => k !== CACHE_NAME && k !== API_CACHE)
+            .map((k) => caches.delete(k))
+        )
       )
       .then(() => self.clients.claim())
   );
@@ -41,12 +48,58 @@ self.addEventListener('fetch', (event) => {
   // Only handle same-origin GET requests
   if (request.method !== 'GET' || !url.origin.startsWith(APP_ORIGIN.split('//')[0])) return;
 
-  // API calls: network-first, no cache fallback (let app handle errors)
+  // API calls: network-first with cache fallback
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(
-      fetch(request).catch(() => new Response(JSON.stringify({ error: 'offline' }), {
-        headers: { 'Content-Type': 'application/json' },
-      }))
+      caches.open(API_CACHE).then((cache) =>
+        fetch(request)
+          .then((response) => {
+            // Cache successful responses
+            if (response && response.status === 200) {
+              const responseClone = response.clone();
+              // Add timestamp header for cache expiration
+              const headers = new Headers(responseClone.headers);
+              headers.set('X-Cache-Time', Date.now().toString());
+              const cachedResponse = new Response(responseClone.body, {
+                status: responseClone.status,
+                statusText: responseClone.statusText,
+                headers,
+              });
+              cache.put(request, cachedResponse);
+            }
+            return response;
+          })
+          .catch(async () => {
+            // Try cache on network failure
+            const cached = await cache.match(request);
+            if (cached) {
+              // Check if cache is still fresh
+              const cacheTime = cached.headers.get('X-Cache-Time');
+              if (cacheTime) {
+                const age = Date.now() - parseInt(cacheTime, 10);
+                if (age < API_CACHE_DURATION) {
+                  return cached;
+                }
+              }
+              // Return stale cache with warning header
+              const headers = new Headers(cached.headers);
+              headers.set('X-Cache-Stale', 'true');
+              return new Response(cached.body, {
+                status: cached.status,
+                statusText: cached.statusText,
+                headers,
+              });
+            }
+            // No cache available
+            return new Response(
+              JSON.stringify({ error: 'offline', message: 'Network unavailable' }),
+              {
+                status: 503,
+                headers: { 'Content-Type': 'application/json' },
+              }
+            );
+          })
+      )
     );
     return;
   }
@@ -80,6 +133,20 @@ self.addEventListener('fetch', (event) => {
         })
     )
   );
+});
+
+// ─── Background Sync ──────────────────────────────────────────────────────────
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'sync-offline-actions') {
+    event.waitUntil(
+      // Notify all clients to trigger sync
+      self.clients.matchAll().then((clients) => {
+        clients.forEach((client) => {
+          client.postMessage({ type: 'SYNC_REQUESTED' });
+        });
+      })
+    );
+  }
 });
 
 // ─── Push Event ──────────────────────────────────────────────────────────────
@@ -125,6 +192,18 @@ self.addEventListener('message', (event) => {
 
   if (event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
+  }
+
+  if (event.data.type === 'SYNC_NOW') {
+    // Register background sync
+    self.registration.sync
+      .register('sync-offline-actions')
+      .then(() => {
+        console.log('[SW] Background sync registered');
+      })
+      .catch((err) => {
+        console.error('[SW] Background sync registration failed:', err);
+      });
   }
 });
 
