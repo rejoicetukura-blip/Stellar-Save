@@ -258,7 +258,22 @@ export async function getSyncMetadata(): Promise<{ lastSync: Date; isOnline: boo
   return metadata ?? null;
 }
 
-// ─── Clear Operations ─────────────────────────────────────────────────────────
+export async function getCachedGroupsListWithStatus(): Promise<{
+  groups: PublicGroup[];
+  isStale: boolean;
+  fromCache: boolean;
+}> {
+  const cached = await getCachedGroupsList();
+  
+  if (!cached) {
+    return { groups: [], isStale: false, fromCache: false };
+  }
+
+  const age = Date.now() - cached.timestamp.getTime();
+  const isStale = cached.stale || age > 120000; // 2 minutes
+
+  return { groups: cached.groups, isStale, fromCache: true };
+}
 
 export async function clearAllCache(): Promise<void> {
   const db = await getDB();

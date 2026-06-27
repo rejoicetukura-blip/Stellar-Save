@@ -13,12 +13,12 @@ import {
 import { useSyncStatus } from '../hooks/useOfflineSync';
 import { formatDistanceToNow } from '../utils/formatDate';
 
-export function OfflineIndicator(): JSX.Element {
+export function OfflineIndicator(): JSX.Element | null {
   const { connectionStatus, syncStatus, queueCount, lastSyncTime } = useSyncStatus();
 
   // Don't show anything if online and synced
   if (connectionStatus === 'online' && syncStatus === 'idle' && queueCount === 0) {
-    return <></>;
+    return null;
   }
 
   const getStatusIcon = () => {
