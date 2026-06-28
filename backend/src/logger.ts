@@ -42,16 +42,15 @@ export const logger = {
   error: (msg: string, fields?: Record<string, unknown>) => winstonLogger.error(msg, fields),
 };
 
-// ── Lazy Prisma import to avoid circular deps and missing generated client ────
+// ── Lazy prisma import — avoids circular dep (logger ← prisma_client ← logger) ─
 let _prisma: any = null;
-function getPrisma(): any {
+async function getPrisma(): Promise<any> {
   if (!_prisma) {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const { PrismaClient } = require('./generated/prisma/client');
-      _prisma = new PrismaClient();
+      const { prisma } = await import('./prisma_client');
+      _prisma = prisma;
     } catch {
-      // Prisma client not generated yet (no DB); audit logging silently skipped
+      // prisma_client unavailable; audit logging silently skipped
     }
   }
   return _prisma;
@@ -87,8 +86,7 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
     });
 
     // Persist to audit_logs table (non-blocking)
-    try {
-      const prisma = getPrisma();
+    getPrisma().then((prisma) => {
       if (prisma) {
         prisma.auditLog.create({
           data: {
@@ -102,7 +100,7 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
           },
         }).catch(() => {/* non-blocking */});
       }
-    } catch {/* non-blocking */}
+    }).catch(() => {/* non-blocking */});
   });
 
   next();

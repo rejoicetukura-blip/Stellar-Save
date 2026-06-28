@@ -9,10 +9,8 @@
  */
 
 import * as sgMail from '@sendgrid/mail';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../prisma_client';
 import { logger } from '../logger';
-
-const prisma = new PrismaClient();
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

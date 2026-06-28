@@ -1,9 +1,17 @@
 import { PrismaClient } from '@prisma/client';
 import { config } from './config';
 import { logger } from './logger';
+import { Gauge } from 'prom-client';
+import { registry } from './metrics';
 
-// Centralized Prisma client for the backend with read replica support.
-// Routes read-heavy queries to replicas when available; falls back to primary on errors.
+// ── Connection-count metric ───────────────────────────────────────────────────
+const prismaConnectionsTotal = new Gauge({
+  name: 'prisma_connections_total',
+  help: 'Number of active Prisma client connections (1 primary + 1 replica when configured)',
+  registers: [registry],
+});
+
+// ── Managed Prisma provider with read-replica support ────────────────────────
 class PrismaReadReplicaClient {
   private primaryClient: PrismaClient;
   private replicaClient?: PrismaClient;
@@ -13,47 +21,38 @@ class PrismaReadReplicaClient {
     this.primaryClient = new PrismaClient({
       datasources: { db: { url: config.database.url } },
     });
+    prismaConnectionsTotal.inc();
 
-    // Initialize replica client if configured
     if (config.database.replicaUrl) {
       this.replicaClient = new PrismaClient({
         datasources: { db: { url: config.database.replicaUrl } },
       });
+      prismaConnectionsTotal.inc();
       logger.info('Read replica configured', { replicaUrl: config.database.replicaUrl });
     }
   }
 
-  // Use replica for reads if healthy, fall back to primary
-  private async queryWithFallback<T>(
-    replicaQuery: () => Promise<T>,
-    primaryQuery: () => Promise<T>
-  ): Promise<T> {
-    if (this.replicaHealthy && this.replicaClient) {
-      try {
-        return await replicaQuery();
-      } catch (error) {
-        logger.warn('Read replica query failed, using primary', { error: String(error) });
-        this.replicaHealthy = false;
-        // Retry health after 30 seconds
-        setTimeout(() => (this.replicaHealthy = true), 30000);
-      }
-    }
-    return await primaryQuery();
-  }
-
-  // Get the appropriate client for a query (read or write)
-  getClient(isWrite = false) {
+  getClient(isWrite = false): PrismaClient {
     if (isWrite || !this.replicaHealthy || !this.replicaClient) {
       return this.primaryClient;
     }
     return this.replicaClient;
   }
+
+  async disconnect(): Promise<void> {
+    await this.primaryClient.$disconnect();
+    prismaConnectionsTotal.dec();
+    if (this.replicaClient) {
+      await this.replicaClient.$disconnect();
+      prismaConnectionsTotal.dec();
+    }
+  }
 }
 
 const prismaSingleton = new PrismaReadReplicaClient();
 
-// Export a proxy that routes reads to replicas
-export const prisma = new Proxy(prismaSingleton.primaryClient, {
+/** Single managed Prisma instance — import this everywhere instead of `new PrismaClient()`. */
+export const prisma = new Proxy(prismaSingleton.getClient(), {
   get: (target: any, prop: string) => {
     if (typeof target[prop] === 'function') {
       const isWrite =
@@ -65,4 +64,9 @@ export const prisma = new Proxy(prismaSingleton.primaryClient, {
     }
     return target[prop];
   },
-}) as any;
+}) as PrismaClient;
+
+/** Call on process shutdown to gracefully close all DB connections. */
+export async function disconnectPrisma(): Promise<void> {
+  await prismaSingleton.disconnect();
+}

@@ -8,12 +8,11 @@
  * Fallback: when no locale is stored, or the locale is unsupported, 'en' is
  * used automatically by the i18n layer.
  */
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../prisma_client';
 import { NotificationService } from '../notification_service';
 import { t, NotificationKey } from './i18n';
 import { logger } from '../logger';
 
-const prisma = new PrismaClient();
 const notificationService = new NotificationService();
 
 /** Fetch the user's stored locale preference, defaulting to 'en'. */

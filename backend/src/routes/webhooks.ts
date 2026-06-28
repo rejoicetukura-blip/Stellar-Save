@@ -1,8 +1,6 @@
 import { Router, Request, Response } from 'express';
 import * as crypto from 'crypto';
-import { PrismaClient } from '../generated/prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '../prisma_client';
 
 export function createWebhookRouter(): Router {
   const router = Router();

@@ -1,8 +1,4 @@
-import { PrismaClient } from '@prisma/client';
-import * as sgMail from '@sendgrid/mail';
-import { logger } from './logger';
-
-const prisma = new PrismaClient();
+import { prisma } from './prisma_client';
 
 /**
  * Notification Service

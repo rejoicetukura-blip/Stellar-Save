@@ -34,6 +34,7 @@ import { FeedbackService } from './feedback_service';
 import { createV2Router } from './routes/v2';
 import { metricsMiddleware, metricsHandler } from './metrics';
 import { requestLogger } from './logger';
+import { disconnectPrisma } from './prisma_client';
 import { createRateLimiterMiddleware, createAuthRateLimiterMiddleware } from './rate_limiter';
 import { createTieredRateLimiter, configureTier, setEndpointCost } from './redis_rate_limiter';
 import { createQuotaReporterRouter } from './routes/quota_reporter';
@@ -331,6 +332,7 @@ server.listen(PORT, async () => {
 process.on('SIGTERM', () => {
   fraudDetectionWorker.stop();
   server.close();
+  disconnectPrisma().catch(() => {});
 });
 
 export { app }; 
