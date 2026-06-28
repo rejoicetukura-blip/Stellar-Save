@@ -351,24 +351,75 @@ model MemberReputation {
   @@index([score])
 }
 
-// ========== FEEDBACK MODELS (Issue #1133) ==========
+// ========== FIAT RAMP MODELS (Issue #1023) ==========
 
-model Feedback {
-  id          String   @id @default(cuid())
-  userId      String?  // null for anonymous submissions
-  category    String   // "bug" | "feature" | "general" | "other"
-  message     String
-  votes       Int      @default(0)
-  status      String   @default("open") // open | in_review | planned | resolved | closed
-  page        String?  // URL or page name where feedback was submitted
-  userAgent   String?
-  response    String?  // Team response/comment
-  respondedAt DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+model RampTransaction {
+  id             String   @id @default(cuid())
+  userId         String
+  type           String   // 'deposit' | 'withdraw'
+  anchorDomain   String
+  stellarAccount String
+  assetCode      String
+  assetIssuer    String?
+  amount         String?
+  anchorId       String?  // anchor's transaction id
+  status         String   @default("pending_user_transfer_start")
+  interactiveUrl String?
+  moreInfoUrl    String?
+  startedAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  @@index([category])
+  @@index([userId])
   @@index([status])
-  @@index([votes])
+  @@index([anchorId])
+}
+
+// ========== KYC MODELS (Issue #1024) ==========
+
+model KycRecord {
+  id             String    @id @default(cuid())
+  userId         String    @unique
+  walletAddress  String
+  status         String    @default("pending") // pending, approved, rejected, expired
+  kycProviderId  String?
+  submittedAt    DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  reviewedAt     DateTime?
+
+  @@index([userId])
+  @@index([status])
+}
+
+model KycStatusEvent {
+  id         String   @id @default(cuid())
+  userId     String
+  oldStatus  String
+  newStatus  String
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
   @@index([createdAt])
+}
+
+// ========== CROSS-BORDER PAYMENT MODELS (Issue #1025) ==========
+
+model CrossBorderPayment {
+  id               String   @id @default(cuid())
+  groupId          String?
+  anchorDomain     String
+  sendAssetCode    String
+  receiveAssetCode String
+  amount           String
+  senderId         String
+  receiverId       String
+  anchorTxId       String?  @unique
+  status           String   @default("pending") // pending, completed, error, refunded
+  stellarAccount   String?
+  stellarMemo      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([groupId])
+  @@index([status])
+  @@index([anchorTxId])
 }

@@ -1,64 +1,61 @@
-/**
- * routes/ramp.ts
- *
- * Fiat on/off-ramp and KYC endpoint stubs.
- * Each route applies the full ramp protection stack:
- *   - strict per-IP rate limit (5 req / 15 min)
- *   - CAPTCHA gate for unauthenticated callers
- *   - per-user deposit velocity limit (3 deposits / hour)
- */
-
-import { Router, Request, Response } from 'express';
-import { rampProtection } from '../fiat_ramp_protection';
+import { Router, Response } from 'express';
+import { jwtAuthMiddleware, AuthenticatedRequest } from '../auth_middleware';
+import { initiateDeposit, initiateWithdraw, syncTransactionStatus, getTransaction } from '../services/sep24';
 import { logger } from '../logger';
 
 export function createRampRouter(): Router {
   const router = Router();
 
   // POST /api/ramp/deposit
-  // Initiate a fiat-to-XLM deposit via anchor.
-  router.post(
-    '/deposit',
-    ...rampProtection({ velocityCheck: true }),
-    (req: Request, res: Response) => {
-      // TODO: integrate with SEP-6 / SEP-24 anchor SDK
-      logger.info('[ramp] deposit initiated', { ip: req.ip });
-      res.status(202).json({ status: 'pending', message: 'Deposit initiation received' });
-    },
-  );
+  router.post('/deposit', jwtAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    const { anchorDomain, assetCode, assetIssuer, amount, stellarAccount } = req.body as Record<string, string>;
+    if (!anchorDomain || !assetCode || !stellarAccount) {
+      return res.status(400).json({ error: 'anchorDomain, assetCode, stellarAccount are required' });
+    }
+    try {
+      const result = await initiateDeposit({ anchorDomain, assetCode, assetIssuer, amount, stellarAccount, userId: req.walletAddress! });
+      return res.status(201).json(result);
+    } catch (err: any) {
+      logger.error('[ramp] deposit initiation failed', { error: err?.message });
+      return res.status(502).json({ error: 'Failed to initiate deposit', detail: err?.message });
+    }
+  });
 
   // POST /api/ramp/withdraw
-  // Initiate an XLM-to-fiat withdrawal.
-  router.post(
-    '/withdraw',
-    ...rampProtection({ velocityCheck: false }),
-    (req: Request, res: Response) => {
-      logger.info('[ramp] withdrawal initiated', { ip: req.ip });
-      res.status(202).json({ status: 'pending', message: 'Withdrawal initiation received' });
-    },
-  );
+  router.post('/withdraw', jwtAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    const { anchorDomain, assetCode, assetIssuer, amount, stellarAccount } = req.body as Record<string, string>;
+    if (!anchorDomain || !assetCode || !stellarAccount) {
+      return res.status(400).json({ error: 'anchorDomain, assetCode, stellarAccount are required' });
+    }
+    try {
+      const result = await initiateWithdraw({ anchorDomain, assetCode, assetIssuer, amount, stellarAccount, userId: req.walletAddress! });
+      return res.status(201).json(result);
+    } catch (err: any) {
+      logger.error('[ramp] withdraw initiation failed', { error: err?.message });
+      return res.status(502).json({ error: 'Failed to initiate withdraw', detail: err?.message });
+    }
+  });
 
-  // POST /api/ramp/kyc
-  // Submit KYC documents for an anchor.
-  router.post(
-    '/kyc',
-    ...rampProtection({ velocityCheck: false }),
-    (req: Request, res: Response) => {
-      logger.info('[ramp] KYC submission', { ip: req.ip });
-      res.status(202).json({ status: 'pending', message: 'KYC submission received' });
-    },
-  );
+  // GET /api/ramp/:id/status — sync and return latest status
+  router.get('/:id/status', jwtAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const record = await syncTransactionStatus(req.params.id);
+      return res.json(record);
+    } catch (err: any) {
+      logger.error('[ramp] status sync failed', { error: err?.message });
+      return res.status(404).json({ error: err?.message ?? 'Not found' });
+    }
+  });
 
-  // GET /api/ramp/status/:transactionId
-  // Poll transaction status. IP-limited but no velocity check.
-  router.get(
-    '/status/:transactionId',
-    ...rampProtection({ velocityCheck: false }),
-    (req: Request, res: Response) => {
-      const { transactionId } = req.params;
-      res.json({ transactionId, status: 'pending' });
-    },
-  );
+  // GET /api/ramp/:id
+  router.get('/:id', jwtAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const record = await getTransaction(req.params.id);
+      return res.json(record);
+    } catch (err: any) {
+      return res.status(404).json({ error: err?.message ?? 'Not found' });
+    }
+  });
 
   return router;
 }
