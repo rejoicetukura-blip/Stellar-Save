@@ -1,6 +1,39 @@
 # Local Development Setup for Stellar-Save
 
-A new contributor can get a working local environment running in under 30 minutes by following these steps.
+## One-Command Setup (Docker — recommended)
+
+The fastest way to get a fully working local stack (Postgres, Redis, backend, frontend, and a local Soroban node) is with Docker Compose:
+
+```bash
+# 1. Clone
+git clone https://github.com/Xoulomon/Stellar-Save.git
+cd Stellar-Save
+
+# 2. Start everything (first run builds images and seeds test data)
+docker compose up --build
+```
+
+| Service   | URL                          | Notes                        |
+|-----------|------------------------------|------------------------------|
+| Frontend  | http://localhost:5173        | Vite dev server (hot reload) |
+| Backend   | http://localhost:3001        | Express API                  |
+| Horizon   | http://localhost:8000        | Local Stellar/Soroban node   |
+| Postgres  | localhost:5432               | user: stellar / stellar_dev  |
+| Redis     | localhost:6379               | No password in dev           |
+
+The `seed` container runs automatically on first startup and inserts test data so you can exercise core flows immediately.
+
+**Teardown (clean):**
+
+```bash
+docker compose down -v   # removes containers and named volumes
+```
+
+The compose setup is idempotent — `docker compose up` after `down` produces the same state.
+
+---
+
+## Manual Setup (without Docker)
 
 ## Prerequisites
 

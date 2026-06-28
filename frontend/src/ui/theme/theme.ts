@@ -77,25 +77,6 @@ export const darkTheme = createTheme({
       },
     },
   },
-};
-
-export const lightTheme = createTheme({
-  ...sharedOverrides,
-  palette: {
-    mode: "light",
-    primary: themeTokens.palette.primary,
-    secondary: themeTokens.palette.secondary,
-    background: {
-      default: "#edf4ff",
-      paper: "#ffffff",
-    },
-    text: {
-      primary: "#152247",
-      secondary: "#4e5b82",
-    },
-    error: themeTokens.palette.error,
-    divider: "#d6dbe8",
-  },
 });
 
 // ── Legacy export (keeps existing imports working) ────────────────────────────

@@ -22,9 +22,11 @@ export const ROUTES = {
   LEADERBOARD: "/leaderboard",
   TEMPLATES: "/templates",
   ANALYTICS: "/analytics",
+  PLATFORM_ANALYTICS: "/platform-analytics",
   TRANSACTIONS: "/transactions",
   MEMBER_PROFILE: "/members/:address",
   ABOUT: "/about",
+  FEEDBACK_ADMIN: "/admin/feedback",
   NOT_FOUND: "/404",
   ERROR: "/500",
 } as const;

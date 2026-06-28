@@ -60,3 +60,49 @@ variable "error_rate_threshold" {
   type        = number
   default     = 10
 }
+
+# ── Cost allocation ───────────────────────────────────────────────────────────
+
+variable "monthly_budget_usd" {
+  description = "Total monthly AWS budget cap for this environment in USD"
+  type        = number
+  default     = 100
+}
+
+variable "budget_alert_emails" {
+  description = "Email addresses to notify when a budget threshold is crossed"
+  type        = list(string)
+  default     = []
+}
+
+variable "vpc_id" {
+  description = "VPC ID (referenced by RDS and ECS modules)"
+  type        = string
+  default     = ""
+}
+
+variable "private_subnet_ids" {
+  description = "Private subnet IDs for RDS and ECS"
+  type        = list(string)
+  default     = []
+}
+
+variable "backend_security_group_ids" {
+  description = "Security group IDs for the backend ECS tasks"
+  type        = list(string)
+  default     = []
+}
+
+variable "db_username" {
+  description = "Master RDS username"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "db_password" {
+  description = "Master RDS password"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
