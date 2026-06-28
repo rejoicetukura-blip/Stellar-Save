@@ -118,6 +118,38 @@ const envSchema = z.object({
     .default('false')
     .transform((v) => v === 'true'),
   KEEPER_SCHEDULE: z.string().default('*/5 * * * *'),
+
+  // ── Tiered Rate Limiting (Issue #1164) ────────────────────────────────────
+  RATE_LIMIT_FREE_REQ_PER_MIN: z
+    .string()
+    .regex(/^\d+$/)
+    .default('30')
+    .transform(Number),
+  RATE_LIMIT_FREE_REQ_PER_HOUR: z
+    .string()
+    .regex(/^\d+$/)
+    .default('500')
+    .transform(Number),
+  RATE_LIMIT_PRO_REQ_PER_MIN: z
+    .string()
+    .regex(/^\d+$/)
+    .default('300')
+    .transform(Number),
+  RATE_LIMIT_PRO_REQ_PER_HOUR: z
+    .string()
+    .regex(/^\d+$/)
+    .default('10000')
+    .transform(Number),
+  RATE_LIMIT_ENTERPRISE_REQ_PER_MIN: z
+    .string()
+    .regex(/^\d+$/)
+    .default('3000')
+    .transform(Number),
+  RATE_LIMIT_ENTERPRISE_REQ_PER_HOUR: z
+    .string()
+    .regex(/^\d+$/)
+    .default('100000')
+    .transform(Number),
 });
 
 // ---------------------------------------------------------------------------
@@ -225,5 +257,20 @@ export const config = {
   keeper: {
     enabled: env.KEEPER_ENABLED,
     schedule: env.KEEPER_SCHEDULE,
+  },
+
+  rateLimiting: {
+    free: {
+      perMin: env.RATE_LIMIT_FREE_REQ_PER_MIN,
+      perHour: env.RATE_LIMIT_FREE_REQ_PER_HOUR,
+    },
+    pro: {
+      perMin: env.RATE_LIMIT_PRO_REQ_PER_MIN,
+      perHour: env.RATE_LIMIT_PRO_REQ_PER_HOUR,
+    },
+    enterprise: {
+      perMin: env.RATE_LIMIT_ENTERPRISE_REQ_PER_MIN,
+      perHour: env.RATE_LIMIT_ENTERPRISE_REQ_PER_HOUR,
+    },
   },
 } as const;

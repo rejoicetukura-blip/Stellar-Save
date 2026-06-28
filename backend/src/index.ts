@@ -35,6 +35,8 @@ import { createV2Router } from './routes/v2';
 import { metricsMiddleware, metricsHandler } from './metrics';
 import { requestLogger } from './logger';
 import { createRateLimiterMiddleware, createAuthRateLimiterMiddleware } from './rate_limiter';
+import { createTieredRateLimiter, configureTier, setEndpointCost } from './redis_rate_limiter';
+import { createQuotaReporterRouter } from './routes/quota_reporter';
 import { createWebhookRouter } from './routes/webhooks';
 import { getMemberReputation } from './reputation_service';
 import { createAuthRouter } from './routes/auth';
@@ -69,8 +71,33 @@ app.use((_req, res, next) => {
   next();
 });
 
+configureTier('free', [
+  { windowMs: 60_000, max: config.rateLimiting.free.perMin, label: '1m' },
+  { windowMs: 3_600_000, max: config.rateLimiting.free.perHour, label: '1h' },
+]);
+configureTier('pro', [
+  { windowMs: 60_000, max: config.rateLimiting.pro.perMin, label: '1m' },
+  { windowMs: 3_600_000, max: config.rateLimiting.pro.perHour, label: '1h' },
+]);
+configureTier('enterprise', [
+  { windowMs: 60_000, max: config.rateLimiting.enterprise.perMin, label: '1m' },
+  { windowMs: 3_600_000, max: config.rateLimiting.enterprise.perHour, label: '1h' },
+]);
+
+setEndpointCost('/api/v1/health', 1, 'read');
+setEndpointCost('/api/v1/ready', 1, 'read');
+setEndpointCost('/api/v1/stats', 1, 'read');
+setEndpointCost('/api/v1/search', 5, 'read');
+setEndpointCost('/api/v1/export', 10, 'write');
+setEndpointCost('/api/v1/analytics', 5, 'read');
+setEndpointCost('/api/ramp/deposit', 10, 'sensitive');
+setEndpointCost('/api/ramp/initiate', 10, 'sensitive');
+setEndpointCost('/api/kyc/submit', 10, 'sensitive');
+setEndpointCost('/api/admin', 5, 'admin');
+setEndpointCost('/graphql', 2, 'read');
+
 app.get('/metrics', metricsHandler);
-app.use(createRateLimiterMiddleware());
+app.use(createTieredRateLimiter());
 
 // Stricter rate limiting on auth/admin endpoints: 10 req / 15 min per IP
 const authRateLimiter = createAuthRateLimiterMiddleware();
@@ -240,6 +267,7 @@ app.use('/api/v1', createV1Router(services));
 app.use('/api/v2', createV2Router(services));
 app.use('/api/webhooks', createWebhookRouter());
 app.use('/api/v1/costs', createCostRouter());
+app.use('/api/v1/rate-limits', createQuotaReporterRouter());
 
 // ── Fiat ramp routes (strict rate limiting + CAPTCHA gate) ────────────────────
 app.use('/api/ramp', createRampRouter());
