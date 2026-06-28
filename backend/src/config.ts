@@ -35,6 +35,7 @@ const envSchema = z.object({
   // ── Database ──────────────────────────────────────────────────────────────
   // Support both DATABASE_URL (local/legacy) and individual components (ECS with Secrets Manager)
   DATABASE_URL: z.string().url().optional(),
+  DATABASE_REPLICA_URL: z.string().url().optional(),
   DB_USERNAME: z.string().optional(),
   DB_PASSWORD: z.string().optional(),
   DB_HOST: z.string().optional(),
@@ -46,6 +47,25 @@ const envSchema = z.object({
     .string()
     .min(1, 'ADMIN_SECRET must not be empty')
     .default('super-secret-admin-key'),
+
+  // ── Auth / JWT ────────────────────────────────────────────────────────────
+  JWT_SECRET: z
+    .string()
+    .min(32, 'JWT_SECRET must be at least 32 characters')
+    .default('stellar-save-jwt-secret-change-in-production-min32chars'),
+  JWT_ACCESS_TOKEN_TTL: z.string().default('15m'),
+  JWT_REFRESH_TOKEN_TTL_DAYS: z
+    .string()
+    .regex(/^\d+$/)
+    .default('30')
+    .transform(Number),
+
+  // ── Privacy / GDPR ────────────────────────────────────────────────────────
+  PII_RETENTION_DAYS: z
+    .string()
+    .regex(/^\d+$/)
+    .default('365')
+    .transform(Number),
 
   // ── Stellar / Soroban ─────────────────────────────────────────────────────
   STELLAR_NETWORK: z
@@ -84,6 +104,20 @@ const envSchema = z.object({
     .default('http://localhost:9200'),
   ELASTICSEARCH_USERNAME: z.string().default('elastic'),
   ELASTICSEARCH_PASSWORD: z.string().default('changeme'),
+
+  // ── KYC (Issue #1024) ─────────────────────────────────────────────────────
+  KYC_PROVIDER_URL: z
+    .string()
+    .url()
+    .default('https://sandbox.kyc-provider.example.com'),
+  KYC_WEBHOOK_SECRET: z.string().default(''),
+
+  // ── Keeper/relayer (Issue #1026) ──────────────────────────────────────────
+  KEEPER_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+  KEEPER_SCHEDULE: z.string().default('*/5 * * * *'),
 });
 
 // ---------------------------------------------------------------------------
@@ -141,10 +175,21 @@ export const config = {
 
   database: {
     url: getDatabaseUrl(),
+    replicaUrl: env.DATABASE_REPLICA_URL,
   },
 
   admin: {
     secret: env.ADMIN_SECRET,
+  },
+
+  auth: {
+    jwtSecret: env.JWT_SECRET,
+    accessTokenTtl: env.JWT_ACCESS_TOKEN_TTL,
+    refreshTokenTtlDays: env.JWT_REFRESH_TOKEN_TTL_DAYS,
+  },
+
+  privacy: {
+    piiRetentionDays: env.PII_RETENTION_DAYS,
   },
 
   stellar: {
@@ -170,5 +215,15 @@ export const config = {
     node: env.ELASTICSEARCH_NODE,
     username: env.ELASTICSEARCH_USERNAME,
     password: env.ELASTICSEARCH_PASSWORD,
+  },
+
+  kyc: {
+    providerUrl: env.KYC_PROVIDER_URL,
+    webhookSecret: env.KYC_WEBHOOK_SECRET,
+  },
+
+  keeper: {
+    enabled: env.KEEPER_ENABLED,
+    schedule: env.KEEPER_SCHEDULE,
   },
 } as const;

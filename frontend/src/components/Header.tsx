@@ -34,6 +34,7 @@ import StarIcon from '@mui/icons-material/Star';
 import { ROUTES } from '../routing/constants';
 import { WalletButton } from './WalletButton';
 import { useThemeMode } from '../context/ThemeContext';
+import { OfflineIndicator } from './OfflineIndicator';
 
 const DRAWER_WIDTH = 260;
 
@@ -194,6 +195,9 @@ export default function Header() {
 
           {/* Spacer */}
           <Box sx={{ flex: 1 }} />
+
+          {/* Offline indicator */}
+          <OfflineIndicator />
 
           {/* Theme toggle — desktop */}
           {!isMobile && (

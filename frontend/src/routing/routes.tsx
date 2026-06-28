@@ -20,10 +20,13 @@ const NotFoundPage = lazy(() => import("../pages/NotFoundPage"));
 const ErrorPage = lazy(() => import("../pages/ErrorPage"));
 const TemplateGalleryPage = lazy(() => import("../pages/TemplateGalleryPage"));
 const AnalyticsDashboardPage = lazy(() => import("../pages/AnalyticsDashboardPage"));
+const PlatformAnalyticsDashboard = lazy(() => import("../pages/PlatformAnalyticsDashboard"));
 const JoinViaInvite = lazy(() => import("../pages/JoinViaInvite"));
+const AppDownloadPage = lazy(() => import("../pages/AppDownloadPage"));
 const MemberProfilePage = lazy(() => import("../pages/MemberProfilePage"));
 const NotificationSettings = lazy(() => import("../pages/settings/NotificationSettings"));
 const AboutPage = lazy(() => import("../pages/AboutPage"));
+const FeedbackAdminPage = lazy(() => import("../pages/FeedbackAdminPage"));
 const TransactionHistoryPage = lazy(() => import("../pages/TransactionHistoryPage"));
 
 export const routeConfig: RouteConfig[] = [
@@ -150,6 +153,13 @@ export const routeConfig: RouteConfig[] = [
     description: "Your contribution analytics and statistics",
   },
   {
+    path: ROUTES.PLATFORM_ANALYTICS,
+    component: PlatformAnalyticsDashboard,
+    protected: true,
+    title: "Platform Analytics - Stellar Save",
+    description: "Platform-wide metrics and stakeholder insights",
+  },
+  {
     path: ROUTES.TRANSACTIONS,
     component: TransactionHistoryPage,
     protected: true,
@@ -164,6 +174,13 @@ export const routeConfig: RouteConfig[] = [
     description: "Join a savings group via invitation link",
   },
   {
+    path: ROUTES.APP_DOWNLOAD,
+    component: AppDownloadPage,
+    protected: false,
+    title: "Get the App - Stellar Save",
+    description: "Download Stellar Save mobile app",
+  },
+  {
     path: ROUTES.MEMBER_PROFILE,
     component: MemberProfilePage,
     protected: false,
@@ -176,6 +193,13 @@ export const routeConfig: RouteConfig[] = [
     protected: false,
     title: "About - Stellar Save",
     description: "Learn about Stellar Save",
+  },
+  {
+    path: ROUTES.FEEDBACK_ADMIN,
+    component: FeedbackAdminPage,
+    protected: true,
+    title: "Feedback Dashboard - Stellar Save",
+    description: "Review and respond to user feedback",
   },
   {
     path: ROUTES.NOT_FOUND,

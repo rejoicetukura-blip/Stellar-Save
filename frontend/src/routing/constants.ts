@@ -15,6 +15,7 @@ export const ROUTES = {
   GROUP_ANALYTICS: "/groups/:groupId/analytics",
   GROUP_MEMBERS: "/groups/:groupId/members",
   GROUP_JOIN: "/join/:inviteCode",
+  APP_DOWNLOAD: "/app/:inviteCode",
   PROFILE: "/profile",
   PROFILE_DETAIL: "/profile/:address",
   SETTINGS: "/settings",
@@ -22,9 +23,11 @@ export const ROUTES = {
   LEADERBOARD: "/leaderboard",
   TEMPLATES: "/templates",
   ANALYTICS: "/analytics",
+  PLATFORM_ANALYTICS: "/platform-analytics",
   TRANSACTIONS: "/transactions",
   MEMBER_PROFILE: "/members/:address",
   ABOUT: "/about",
+  FEEDBACK_ADMIN: "/admin/feedback",
   NOT_FOUND: "/404",
   ERROR: "/500",
 } as const;
@@ -43,5 +46,6 @@ export const buildRoute = {
   groupAnalytics: (groupId: string) => `/groups/${groupId}/analytics`,
   groupMembers: (groupId: string) => `/groups/${groupId}/members`,
   groupJoin: (inviteCode: string) => `/join/${inviteCode}`,
+  appDownload: (inviteCode: string) => `/app/${inviteCode}`,
   memberProfile: (address: string) => `/members/${address}`,
 } as const;
