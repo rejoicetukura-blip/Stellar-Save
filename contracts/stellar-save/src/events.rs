@@ -1,4 +1,3 @@
-#![allow(deprecated)]
 use soroban_sdk::{contracttype, Address, Env, String};
 
 /// Event emitted when a new savings group is created.

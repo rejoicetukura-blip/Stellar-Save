@@ -18,8 +18,6 @@ import { ApolloServer } from '@apollo/server';
 import { expressMiddleware } from '@apollo/server/express4';
 import { makeExecutableSchema } from '@graphql-tools/schema';
 import { RecommendationEngine } from './recommendation';
-import { ABTestingFramework } from './ab_testing';
-import { Group, UserInteraction } from './models';
 import { EmailService } from './email_service';
 import { ExportService } from './export_service';
 import { BackupService, S3HttpClient } from './backup_service';
@@ -120,38 +118,6 @@ app.get('/api/cache/stats', async (req, res) => {
   res.json(stats);
 });
 
-// Example cached endpoint for retirements
-app.get('/api/retirements', cacheMiddleware(60), async (req, res) => {
-  res.json({ 
-    data: 'Retirements data - cached for 60 seconds', 
-    timestamp: new Date(),
-    source: 'database'
-  });
-});
-
-// Write endpoint that invalidates cache
-app.post('/api/retirements', async (req, res) => {
-  await clearCache('/api/retirements');
-  res.json({ 
-    success: true, 
-    message: 'Retirement created, cache cleared',
-    timestamp: new Date()
-  });
-});
-
-// Cached stats endpoint
-app.get('/api/stats', cacheMiddleware(3600), async (req, res) => {
-  res.json({
-    totalRetired: 1000,
-    totalTransactions: 45,
-    timestamp: new Date(),
-    source: 'database'
-  });
-});
-
-// Start cache warming job (preloads popular data)
-startWarmingJob();
-
 // ── GraphQL ───────────────────────────────────────────────────────────────────
 const schema = makeExecutableSchema({ typeDefs, resolvers });
 const apolloServer = new ApolloServer({
@@ -178,22 +144,9 @@ apolloServer.start().then(() => {
 
 const PORT = config.port;
 
-// ── Mock Data ────────────────────────────────────────────────────────────────
-const mockGroups: Group[] = [
-  { id: '1', name: 'Weekly Savers', contributionAmount: 100, cycleDuration: 604800, maxMembers: 10, currentMembers: 5, status: 'Active', tags: ['weekly', 'low-entry'] },
-  { id: '2', name: 'Monthly Builders', contributionAmount: 1000, cycleDuration: 2592000, maxMembers: 12, currentMembers: 3, status: 'Active', tags: ['monthly', 'high-entry'] },
-  { id: '3', name: 'Student Circle', contributionAmount: 50, cycleDuration: 604800, maxMembers: 5, currentMembers: 4, status: 'Active', tags: ['weekly', 'students'] },
-];
-
-const mockInteractions: UserInteraction[] = [
-  { userId: 'user1', groupId: '1', interactionType: 'join', timestamp: Date.now() },
-  { userId: 'user1', groupId: '2', interactionType: 'join', timestamp: Date.now() },
-  { userId: 'user2', groupId: '1', interactionType: 'join', timestamp: Date.now() },
-];
-
 // ── Services ─────────────────────────────────────────────────────────────────
+import { mockGroups, mockInteractions } from './mock_data';
 const engine = new RecommendationEngine(mockGroups, mockInteractions);
-const abTest = new ABTestingFramework();
 const emailService = new EmailService();
 const exportService = new ExportService(emailService, engine.getInteractions(), engine.getPreferences());
 const s3Client = new S3HttpClient();
@@ -243,7 +196,7 @@ if (config.keeper.enabled) {
   startKeeperJob(config.keeper.schedule, config.indexer.contractId, config.stellar.rpcUrl);
 }
 
-const services = { engine, abTest, exportService, backupService, backupScheduler, recoveryService, backupMonitor, eventIndexer };
+const services = { engine, exportService, backupService, backupScheduler, recoveryService, backupMonitor, eventIndexer };
 
 // ── Auth routes (public — no JWT required) ───────────────────────────────────
 app.use('/api/auth', createAuthRouter());
@@ -268,9 +221,6 @@ app.use('/api/webhooks', createWebhookRouter());
 app.use('/api/v1/costs', createCostRouter());
 app.use('/api/v1/rate-limits', createQuotaReporterRouter());
 
-// ── Fiat ramp routes (strict rate limiting + CAPTCHA gate) ────────────────────
-app.use('/api/ramp', createRampRouter());
-
 // ── Member reputation endpoint (Issue #800) ───────────────────────────────────
 app.get('/api/members/:address/reputation', async (req, res) => {
   const { address } = req.params;
@@ -284,18 +234,6 @@ app.get('/api/members/:address/reputation', async (req, res) => {
     return res.status(500).json({ error: 'Failed to fetch reputation' });
   }
 });
-
-// ── Legacy unversioned routes (redirect to v1 for backward compatibility) ────
-app.use((req, res, next) => {
-  const legacyPaths = ['/health', '/recommendations', '/preferences', '/export', '/backup', '/search'];
-  if (legacyPaths.some(p => req.path.startsWith(p))) {
-    res.setHeader('X-API-Deprecation-Notice', 'Unversioned paths are deprecated. Use /api/v1/...');
-    res.setHeader('Deprecation', 'true');
-    res.setHeader('Sunset', '2027-01-01');
-  }
-  next();
-});
-app.use('/', createV1Router(services));
 
 // ── Error handling (must be last) ─────────────────────────────────────────────
 app.use(notFoundMiddleware);
@@ -316,8 +254,7 @@ const server = hasTls
 server.listen(PORT, async () => {
   console.log(`API server running on port ${PORT}`);
   console.log(`  HTTP/2 enabled${hasTls ? ' (TLS)' : ' (h2c cleartext)'}.`);
-  console.log(`  Versioned:  /api/v1/...  /api/v2/...`);
-  console.log(`  Legacy:     /health  /recommendations  etc. (deprecated)`);
+  console.log(`  Versioned:  /api/v1/...  /api/v2/...`)
   console.log(`  Cache stats: http://localhost:${PORT}/api/cache/stats`);
 
   // Start fraud detection worker (Issue #1028)

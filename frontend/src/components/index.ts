@@ -44,7 +44,6 @@ export type { CycleProgressProps } from "./CycleProgress";
 export { UserStats } from "./UserStats";
 export { SettingsSection } from "./SettingsSection";
 export { ReminderPreferencesSection } from "./ReminderPreferencesSection";
-export { DebounceDemo } from "./DebounceDemo";
 export { ContributionFlow } from "./ContributionFlow";
 export type { ContributionFlowProps } from "./ContributionFlow";
 export { ContributionSuccessModal } from "./ContributionSuccessModal";

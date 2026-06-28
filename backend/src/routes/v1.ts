@@ -2,7 +2,6 @@ import { Router } from 'express';
 import { format as fastCsvFormat } from 'fast-csv';
 
 import { RecommendationEngine } from '../recommendation';
-import { ABTestingFramework } from '../ab_testing';
 import { EmailService } from '../email_service';
 import { ExportService } from '../export_service';
 import { BackupService, S3HttpClient } from '../backup_service';
@@ -23,7 +22,6 @@ import { apiKeyAuthMiddleware, recordApiUsage } from '../api_key_rate_limiter';
 // ── Shared service instances (passed in from app) ────────────────────────────
 export interface V1Services {
   engine: RecommendationEngine;
-  abTest: ABTestingFramework;
   exportService: ExportService;
   backupService: BackupService;
   backupScheduler: BackupScheduler;
@@ -38,7 +36,6 @@ export function createV1Router(services: V1Services): Router {
   const router = Router();
   const {
     engine,
-    abTest,
     exportService,
     backupService,
     backupScheduler,
@@ -111,10 +108,8 @@ export function createV1Router(services: V1Services): Router {
   // Recommendations
   router.get('/recommendations/:userId', (req, res) => {
     const { userId } = req.params;
-    const bucket = abTest.getBucket(userId);
-    const algorithm = bucket === 'A' ? 'content' : 'collaborative';
-    const recommendations = engine.getRecommendations(userId, algorithm);
-    res.json({ userId, bucket, algorithm, recommendations });
+    const recommendations = engine.getRecommendations(userId, 'collaborative');
+    res.json({ userId, algorithm: 'collaborative', recommendations });
   });
 
   // Health
