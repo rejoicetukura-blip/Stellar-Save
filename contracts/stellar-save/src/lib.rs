@@ -9112,6 +9112,7 @@ mod tests {
         assert_eq!(count, 6); // 5 + 1
     }
 
+    // Task 6.2: Test joining non-existent group
     #[test]
     fn test_record_contribution_zero_initial_totals() {
         let env = Env::default();
@@ -9151,6 +9152,7 @@ mod tests {
         assert_eq!(count, 1);
     }
 
+    // Task 6.4: Test joining when group is full
     #[test]
     fn test_record_contribution_large_amount() {
         let env = Env::default();
@@ -9210,7 +9212,7 @@ mod tests {
         group.started_at = started_at;
         env.storage()
             .persistent()
-            .set(&StorageKeyBuilder::group_data(group_id), &group);
+            .set(&status_key, &GroupStatus::Pending);
 
         // Test valid amount (10 XLM)
         let result = env.as_contract(&contract_id, || validate_amount_range(&env, 100_000_000));
@@ -9242,7 +9244,7 @@ mod tests {
         group.started_at = started_at;
         env.storage()
             .persistent()
-            .set(&StorageKeyBuilder::group_data(group_id), &group);
+            .set(&StorageKeyBuilder::group_members(group_id), &members);
 
         // Test amount below minimum
         let result = env.as_contract(&contract_id, || validate_amount_range(&env, 500_000));
@@ -9276,6 +9278,10 @@ mod tests {
         env.storage()
             .persistent()
             .set(&StorageKeyBuilder::group_data(group_id), &group);
+        env.storage().persistent().set(
+            &StorageKeyBuilder::group_status(group_id),
+            &GroupStatus::Pending,
+        );
 
         // Test amount above maximum
         let result = env.as_contract(&contract_id, || validate_amount_range(&env, 2_000_000_000));
@@ -9408,6 +9414,10 @@ mod tests {
         env.storage()
             .persistent()
             .set(&StorageKeyBuilder::group_data(group_id), &group);
+        env.storage().persistent().set(
+            &StorageKeyBuilder::group_status(group_id),
+            &GroupStatus::Pending,
+        );
 
         // Action: Get deadline and calculate time remaining
         let deadline = client.get_contribution_deadline(&group_id, &0);
@@ -9479,7 +9489,7 @@ mod tests {
         group.started_at = started_at;
         env.storage()
             .persistent()
-            .set(&StorageKeyBuilder::group_data(group_id), &group);
+            .set(&StorageKeyBuilder::group_members(group_id), &members);
 
         // Action: Get deadline for cycle 50
         let deadline = client.get_contribution_deadline(&group_id, &50);
@@ -9515,6 +9525,10 @@ mod tests {
         env.storage()
             .persistent()
             .set(&StorageKeyBuilder::group_data(group_id), &group);
+        env.storage().persistent().set(
+            &StorageKeyBuilder::group_status(group_id),
+            &GroupStatus::Pending,
+        );
 
         // Action: Get deadline for cycle 0
         let deadline = client.get_contribution_deadline(&group_id, &0);
@@ -9550,6 +9564,10 @@ mod tests {
         env.storage()
             .persistent()
             .set(&StorageKeyBuilder::group_data(group_id), &group);
+        env.storage().persistent().set(
+            &StorageKeyBuilder::group_status(group_id),
+            &GroupStatus::Pending,
+        );
 
         // Action: Call multiple times for same cycle
         let deadline1 = client.get_contribution_deadline(&group_id, &0);
@@ -9590,6 +9608,10 @@ mod tests {
         env.storage()
             .persistent()
             .set(&StorageKeyBuilder::group_data(group_id), &group);
+        env.storage().persistent().set(
+            &StorageKeyBuilder::group_status(group_id),
+            &GroupStatus::Pending,
+        );
 
         // Action: Get next payout cycle time
         let next_payout_time = client.get_next_payout_cycle(&group_id);
@@ -9626,7 +9648,7 @@ mod tests {
         group.current_cycle = 2;
         env.storage()
             .persistent()
-            .set(&StorageKeyBuilder::group_data(group_id), &group);
+            .set(&StorageKeyBuilder::group_members(group_id), &members);
 
         // Action: Get next payout cycle time
         let next_payout_time = client.get_next_payout_cycle(&group_id);
@@ -9722,7 +9744,7 @@ mod tests {
         group.current_cycle = 50;
         env.storage()
             .persistent()
-            .set(&StorageKeyBuilder::group_data(group_id), &group);
+            .set(&StorageKeyBuilder::group_members(group_id), &members);
 
         // Action: Get next payout cycle time
         let next_payout_time = client.get_next_payout_cycle(&group_id);
@@ -9743,6 +9765,8 @@ mod tests {
         // Action: Try to get next payout for non-existent group
         client.get_next_payout_cycle(&999);
     }
+
+    // Tests for validate_contribution_amount helper function
 
     #[test]
     #[should_panic(expected = "Status(ContractError(1003))")] // InvalidState
@@ -9914,6 +9938,7 @@ mod tests {
     #[test]
     fn test_is_payout_due_cycle_incomplete() {
         let env = Env::default();
+        let creator = Address::generate(&env);
         let contract_id = env.register(StellarSaveContract, ());
         let client = StellarSaveContractClient::new(&env, &contract_id);
         let creator = Address::generate(&env);
@@ -9951,6 +9976,7 @@ mod tests {
     #[test]
     fn test_is_payout_due_ready() {
         let env = Env::default();
+        let creator = Address::generate(&env);
         let contract_id = env.register(StellarSaveContract, ());
         let client = StellarSaveContractClient::new(&env, &contract_id);
         let creator = Address::generate(&env);
@@ -9988,6 +10014,7 @@ mod tests {
     #[test]
     fn test_is_payout_due_already_paid() {
         let env = Env::default();
+        let admin = Address::generate(&env);
         let contract_id = env.register(StellarSaveContract, ());
         let client = StellarSaveContractClient::new(&env, &contract_id);
         let creator = Address::generate(&env);
@@ -10048,7 +10075,6 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
         let contract_id = env.register(StellarSaveContract, ());
-        let client = StellarSaveContractClient::new(&env, &contract_id);
 
         let creator = Address::generate(&env);
         let group_id = client.create_group(&creator, &100, &3600, &3);
@@ -10074,7 +10100,6 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
         let contract_id = env.register(StellarSaveContract, ());
-        let client = StellarSaveContractClient::new(&env, &contract_id);
 
         let creator = Address::generate(&env);
         let cycle_duration = 3600u64;
@@ -10405,7 +10430,6 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
         let contract_id = env.register(StellarSaveContract, ());
-        let client = StellarSaveContractClient::new(&env, &contract_id);
 
         let creator = Address::generate(&env);
         let group_id = client.create_group(&creator, &100, &3600, &3);
@@ -10437,7 +10461,6 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
         let contract_id = env.register(StellarSaveContract, ());
-        let client = StellarSaveContractClient::new(&env, &contract_id);
 
         let creator = Address::generate(&env);
         let group_id = client.create_group(&creator, &100, &3600, &3);
@@ -10504,7 +10527,6 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
         let contract_id = env.register(StellarSaveContract, ());
-        let client = StellarSaveContractClient::new(&env, &contract_id);
 
         let creator = Address::generate(&env);
         let group_id = client.create_group(&creator, &100, &3600, &3);
@@ -10589,7 +10611,6 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
         let contract_id = env.register(StellarSaveContract, ());
-        let client = StellarSaveContractClient::new(&env, &contract_id);
 
         let creator = Address::generate(&env);
         let group_id = client.create_group(&creator, &100, &3600, &10);
@@ -10695,6 +10716,8 @@ mod tests {
         assert_eq!(last_page.len(), 1);
         assert_eq!(last_page.get(0).unwrap().cycle_number, 4);
     }
+
+    // Tests for get_contribution_deadline function
 
     #[test]
     fn test_get_payout_history_pagination_offset_beyond_end() {
@@ -11054,6 +11077,8 @@ mod tests {
         assert_eq!(schedule.get(0).unwrap().payout_date, 1003600);
     }
 
+    // Tests for get_next_payout_cycle function
+
     #[test]
     fn test_get_payout_schedule_multiple_members() {
         let env = Env::default();
@@ -11352,6 +11377,7 @@ mod tests {
     fn test_record_payout_already_executed() {
         let env = Env::default();
         let contract_id = env.register(StellarSaveContract, ());
+        let client = StellarSaveContractClient::new(&env, &contract_id);
 
         let recipient = Address::generate(&env);
         let group_id = 1;
@@ -12145,6 +12171,9 @@ mod tests {
         env.mock_all_auths();
         let contract_id = env.register(StellarSaveContract, ());
         let client = StellarSaveContractClient::new(&env, &contract_id);
+        let result = client.try_get_group_balance(&999);
+        assert_eq!(result, Err(Ok(StellarSaveError::GroupNotFound)));
+    }
 
         let creator = Address::generate(&env);
         // Create group with maximum contribution amount to test overflow
@@ -12342,6 +12371,7 @@ mod tests {
     #[test]
     fn test_get_group_info() {
         let env = Env::default();
+        env.mock_all_auths();
         let contract_id = env.register(StellarSaveContract, ());
         let client = StellarSaveContractClient::new(&env, &contract_id);
         let creator = Address::generate(&env);
@@ -12359,6 +12389,7 @@ mod tests {
     #[test]
     fn test_get_group_members() {
         let env = Env::default();
+        env.mock_all_auths();
         let contract_id = env.register(StellarSaveContract, ());
         let client = StellarSaveContractClient::new(&env, &contract_id);
         let creator = Address::generate(&env);
@@ -12407,8 +12438,10 @@ mod tests {
     #[test]
     fn test_get_payout_history_all() {
         let env = Env::default();
+        env.mock_all_auths();
         let contract_id = env.register(StellarSaveContract, ());
         let client = StellarSaveContractClient::new(&env, &contract_id);
+
         let creator = Address::generate(&env);
         let recipient = Address::generate(&env);
 
@@ -12430,6 +12463,7 @@ mod tests {
     #[test]
     fn test_is_member_of_group() {
         let env = Env::default();
+        env.mock_all_auths();
         let contract_id = env.register(StellarSaveContract, ());
         let client = StellarSaveContractClient::new(&env, &contract_id);
         let creator = Address::generate(&env);
@@ -12589,7 +12623,8 @@ mod tests {
         let client = StellarSaveContractClient::new(&env, &contract_id);
         let creator = Address::generate(&env);
 
-        let group_id = client.create_group(&creator, &100, &3600, &5);
+        // Add member to group
+        client.join_group(&group_id, &member);
 
         // Enable proof requirement
         client.set_contribution_proof_required(&group_id, &true);
@@ -12756,7 +12791,7 @@ mod tests {
             .persistent()
             .get::<_, Group>(&group_key)
             .unwrap();
-        group.allow_dynamic_contributions = true;
+         group.allow_dynamic_contributions = true;
         group.status = GroupStatus::Active;
         group.member_count = 3;
         env.storage().persistent().set(&group_key, &group);
@@ -14000,6 +14035,10 @@ mod tests {
         assert_eq!(result, Err(Ok(StellarSaveError::AlreadyVotedDissolve)));
     }
 
+    // ============================================================================
+    // TESTS FOR ISSUE #424: Payout Execution
+    // ============================================================================
+
     #[test]
     fn test_vote_dissolve_invalid_state_pending() {
         let env = Env::default();
@@ -14040,6 +14079,7 @@ mod tests {
     #[test]
     fn test_vote_dissolve_partial_vote_no_dissolution() {
         let env = Env::default();
+        env.mock_all_auths();
         let contract_id = env.register(StellarSaveContract, ());
         let client = StellarSaveContractClient::new(&env, &contract_id);
         env.mock_all_auths();
@@ -14102,6 +14142,10 @@ mod tests {
 }
 
     // --- Rounding behavior tests ---
+
+    // ============================================================================
+    // TESTS FOR ISSUE #426: Query Functions
+    // ============================================================================
 
     #[test]
     fn test_create_group_rounds_contribution_amount() {
@@ -14288,7 +14332,6 @@ mod tests {
         env.mock_all_auths();
         let contract_id = env.register(StellarSaveContract, ());
         let client = StellarSaveContractClient::new(&env, &contract_id);
-
         let creator = Address::generate(&env);
         let invitee = Address::generate(&env);
         let group_id = 1u64;
@@ -14462,6 +14505,10 @@ mod tests {
         client.contribute_batch(&group_id, &member, &empty);
     }
 
+    // =========================================================================
+    // Tests for #480: Dynamic Contribution Amounts
+    // =========================================================================
+
     #[test]
     #[should_panic(expected = "Error(Contract, #3002)")] // AlreadyContributed — duplicate cycle
     fn test_contribute_batch_duplicate_cycles() {
@@ -14551,12 +14598,15 @@ mod tests {
         assert_eq!(groups.len(), 0);
     }
 
+    // =========================================================================
+    // Tests for #481: Group Analytics Functions
+    // =========================================================================
+
     #[test]
     fn test_list_groups_by_member_single_group() {
         let env = Env::default();
         let contract_id = env.register(StellarSaveContract, ());
         let client = StellarSaveContractClient::new(&env, &contract_id);
-
         let creator = Address::generate(&env);
         let member = Address::generate(&env);
 
@@ -14575,6 +14625,7 @@ mod tests {
         let env = Env::default();
         let contract_id = env.register(StellarSaveContract, ());
         let client = StellarSaveContractClient::new(&env, &contract_id);
+        let creator = Address::generate(&env);
 
         let creator1 = Address::generate(&env);
         let creator2 = Address::generate(&env);
@@ -14606,7 +14657,6 @@ mod tests {
         let env = Env::default();
         let contract_id = env.register(StellarSaveContract, ());
         let client = StellarSaveContractClient::new(&env, &contract_id);
-
         let creator = Address::generate(&env);
         let member1 = Address::generate(&env);
         let member2 = Address::generate(&env);
@@ -14634,7 +14684,14 @@ mod tests {
     fn test_member_groups_index_maintained_on_join() {
         let env = Env::default();
         let contract_id = env.register(StellarSaveContract, ());
-        let client = StellarSaveContractClient::new(&env, &contract_id);
+        let client = StellarSaveContractClient::new(env, &contract_id);
+        let creator = Address::generate(env);
+        env.mock_all_auths();
+        let group_id = client
+            .create_group(&creator, &10_000_000, &604800, &5, &grace_period_seconds)
+            .unwrap();
+        (group_id, client)
+    }
 
         let creator = Address::generate(&env);
         let member = Address::generate(&env);
@@ -14670,7 +14727,6 @@ mod tests {
         let env = Env::default();
         let contract_id = env.register(StellarSaveContract, ());
         let client = StellarSaveContractClient::new(&env, &contract_id);
-
         let creator = Address::generate(&env);
         let member = Address::generate(&env);
 
@@ -14703,6 +14759,8 @@ mod tests {
         let env = Env::default();
         let contract_id = env.register(StellarSaveContract, ());
         let client = StellarSaveContractClient::new(&env, &contract_id);
+        let creator = Address::generate(&env);
+        let member = Address::generate(&env);
 
         let creator = Address::generate(&env);
         let member = Address::generate(&env);
@@ -14743,10 +14801,13 @@ mod tests {
     #[test]
     fn test_tick_group_not_active() {
         let env = Env::default();
-        env.mock_all_auths();
+        let started_at: u64 = 1000;
+        let cycle_duration: u64 = 604800;
+        let grace: u64 = 3600;
+
+
         let contract_id = env.register(StellarSaveContract, ());
         let client = StellarSaveContractClient::new(&env, &contract_id);
-
         let creator = Address::generate(&env);
         let group_id = client.create_group(
             &creator,

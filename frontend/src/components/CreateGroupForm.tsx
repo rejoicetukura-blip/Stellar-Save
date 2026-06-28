@@ -182,6 +182,15 @@ export function CreateGroupForm({
             helperText="Link to a group avatar image for visual identification"
             disabled={isSubmitting}
           />
+          <Input
+            label="Image URL (Optional)"
+            type="url"
+            value={formData.imageUrl}
+            onChange={(e) => updateField("imageUrl", e.target.value)}
+            error={errors.imageUrl}
+            helperText="URL to a group image for visual identification"
+            disabled={isSubmitting}
+          />
         </div>
       )}
 

@@ -12,6 +12,8 @@ type Status = 'active' | 'completed' | 'pending' | 'complete';
 interface GroupCardStaticProps {
   groupId?: string;
   groupName: string;
+  description?: string;
+  imageUrl?: string;
   memberCount: number;
   contributionAmount: number;
   currency?: string;
@@ -94,6 +96,8 @@ interface CardUIProps {
 function GroupCardUI({
   groupId,
   groupName,
+  description,
+  imageUrl,
   memberCount,
   contributionAmount,
   status,
