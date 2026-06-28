@@ -6,7 +6,10 @@
   "scripts": {
     "start": "tsx src/index.ts",
     "dev": "tsx watch src/index.ts",
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "jest",
+    "lint": "eslint src",
     "test:integration": "jest --config jest.integration.config.js --runInBand"
   },
   "keywords": [],
@@ -14,7 +17,10 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@stellar-save/sdk": "workspace:*",
     "@apollo/server": "^4.12.2",
+    "@aws-sdk/client-compute-optimizer": "^3.600.0",
+    "@aws-sdk/client-cost-explorer": "^3.600.0",
     "@aws-sdk/client-s3": "^3.600.0",
     "@elastic/elasticsearch": "^9.3.4",
     "@graphql-tools/schema": "^10.0.13",
