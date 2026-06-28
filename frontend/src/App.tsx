@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
 import { Box, CircularProgress } from "@mui/material";
-import { FeedbackWidget } from "./components/FeedbackWidget";
+import { useDeepLink } from "./hooks/useDeepLink";
 import "./App.css";
 import { useOfflineSyncInit } from "./hooks/useOfflineSync";
 
@@ -17,8 +17,8 @@ function RouteLoadingFallback() {
 }
 
 export default function App() {
-  // Initialize offline sync service
-  useOfflineSyncInit();
+  // Initialize deep link handler
+  useDeepLink();
 
   return (
     <>

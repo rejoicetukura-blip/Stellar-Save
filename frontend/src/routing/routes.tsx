@@ -22,6 +22,7 @@ const TemplateGalleryPage = lazy(() => import("../pages/TemplateGalleryPage"));
 const AnalyticsDashboardPage = lazy(() => import("../pages/AnalyticsDashboardPage"));
 const PlatformAnalyticsDashboard = lazy(() => import("../pages/PlatformAnalyticsDashboard"));
 const JoinViaInvite = lazy(() => import("../pages/JoinViaInvite"));
+const AppDownloadPage = lazy(() => import("../pages/AppDownloadPage"));
 const MemberProfilePage = lazy(() => import("../pages/MemberProfilePage"));
 const NotificationSettings = lazy(() => import("../pages/settings/NotificationSettings"));
 const AboutPage = lazy(() => import("../pages/AboutPage"));
@@ -171,6 +172,13 @@ export const routeConfig: RouteConfig[] = [
     protected: false,
     title: "Join Group - Stellar Save",
     description: "Join a savings group via invitation link",
+  },
+  {
+    path: ROUTES.APP_DOWNLOAD,
+    component: AppDownloadPage,
+    protected: false,
+    title: "Get the App - Stellar Save",
+    description: "Download Stellar Save mobile app",
   },
   {
     path: ROUTES.MEMBER_PROFILE,
