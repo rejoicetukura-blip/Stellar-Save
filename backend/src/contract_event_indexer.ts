@@ -2,7 +2,7 @@ import { Horizon } from '@stellar/stellar-sdk';
 import { PrismaClient } from './generated/prisma/client';
 import { WebPushService } from './web_push_service';
 import { eventsIndexedTotal, sorobanRpcCallsTotal } from './metrics';
-import { withSpan } from './tracing';
+import { GroupStateCache, isStateMutatingEvent } from './lib/cache';
 
 // Event types emitted by the Stellar savings contract
 const PAYOUT_EVENT_TYPES = ['payout', 'payout_received', 'payoutreceived', 'payout_processed'];
@@ -245,6 +245,16 @@ export class ContractEventIndexer {
       );
       console.log(`Stored event: ${event.type} in ledger ${event.ledger}`);
       eventsIndexedTotal.inc({ event_type: event.type || 'unknown' });
+
+      // Bust cache for state-mutating events
+      if (isStateMutatingEvent(stored.eventType)) {
+        const groupId = this.extractGroupId(stored.data);
+        if (groupId) {
+          await GroupStateCache.invalidate(stored.contractId, String(groupId), stored.eventType);
+        } else {
+          await GroupStateCache.invalidateContract(stored.contractId, stored.eventType);
+        }
+      }
 
       // Deliver signed webhook notifications for group events
       const webhookEvent = this.mapToWebhookEvent(stored.eventType);

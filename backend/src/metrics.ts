@@ -51,6 +51,20 @@ export const cacheMissesTotal = new Counter({
   registers: [registry],
 });
 
+export const cacheStaleReadsTotal = new Counter({
+  name: 'cache_stale_reads_total',
+  help: 'Total stale cache reads detected after invalidation',
+  labelNames: ['cache'],
+  registers: [registry],
+});
+
+export const cacheInvalidationsTotal = new Counter({
+  name: 'cache_invalidations_total',
+  help: 'Total cache key invalidations triggered by contract events',
+  labelNames: ['event_type'],
+  registers: [registry],
+});
+
 // ── Gauges ────────────────────────────────────────────────────────────────────
 export const activeConnections = new Gauge({
   name: 'active_connections',
