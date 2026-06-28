@@ -1,3 +1,10 @@
+// ── Distributed tracing ───────────────────────────────────────────────────────
+// MUST be the very first import so OpenTelemetry can patch instrumented libraries
+// (express, http, pg, ioredis, …) before they are required. No-op when tracing
+// is disabled (the default).
+import { startTracing } from './tracing';
+startTracing();
+
 import fs from 'fs';
 import http2 from 'http2';
 import dotenv from 'dotenv';
@@ -31,6 +38,8 @@ import { createWebhookRouter } from './routes/webhooks';
 import { getMemberReputation } from './reputation_service';
 import { createAuthRouter } from './routes/auth';
 import { createUserRouter } from './routes/user';
+import { createPrivacyRouter } from './routes/privacy';
+import { OnChainMonitor } from './on_chain_monitor';
 
 const CSP_POLICY = [
   "default-src 'self'",
@@ -187,6 +196,16 @@ if (process.env.INDEXER_ENABLED === 'true') {
   eventIndexer.start().catch(console.error);
 }
 
+// Start on-chain anomaly monitor
+if (process.env.ON_CHAIN_MONITOR_ENABLED === 'true') {
+  const onChainMonitor = new OnChainMonitor({
+    largePayoutThresholdStroops: BigInt(
+      process.env.ON_CHAIN_LARGE_PAYOUT_THRESHOLD_STROOPS ?? '100000000000'
+    ),
+  });
+  onChainMonitor.start();
+}
+
 // Start analytics resync job if enabled
 if (process.env.ANALYTICS_RESYNC_ENABLED === 'true') {
   startAnalyticsResyncJob(process.env.ANALYTICS_RESYNC_SCHEDULE || '0 * * * *'); // default: top of every hour
@@ -200,11 +219,18 @@ app.use('/api/auth', createAuthRouter());
 // ── User routes (JWT protected) ───────────────────────────────────────────────
 app.use('/api/user', createUserRouter());
 
+// ── Privacy / GDPR routes (JWT protected) ────────────────────────────────────
+app.use('/api/privacy', createPrivacyRouter());
+
 // ── Versioned API routes ──────────────────────────────────────────────────────
 app.use('/api', versionMiddleware);
 app.use('/api/v1', createV1Router(services));
 app.use('/api/v2', createV2Router(services));
 app.use('/api/webhooks', createWebhookRouter());
+app.use('/api/v1/costs', createCostRouter());
+
+// ── Fiat ramp routes (strict rate limiting + CAPTCHA gate) ────────────────────
+app.use('/api/ramp', createRampRouter());
 
 // ── Member reputation endpoint (Issue #800) ───────────────────────────────────
 app.get('/api/members/:address/reputation', async (req, res) => {

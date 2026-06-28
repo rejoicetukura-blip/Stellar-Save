@@ -25,6 +25,9 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
     coverage: {
+      provider: 'v8',
+      reporter: ['text', 'lcov', 'cobertura', 'json-summary'],
+      reportsDirectory: './coverage',
       include: ['src/components/GroupCard.tsx', 'src/components/ContributionFlow.tsx', 'src/components/TransactionHistory.tsx'],
       thresholds: {
         lines: 80,

@@ -45,6 +45,7 @@ model NotificationPreference {
   groupUpdates           Boolean  @default(true)
   payoutNotifications    Boolean  @default(true)
   emailFrequency         String   @default("immediate") // immediate, daily, weekly, never
+  locale                 String   @default("en")        // BCP-47 locale tag e.g. en, fr, yo
   unsubscribeToken       String   @unique @default(cuid())
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
@@ -300,6 +301,39 @@ model AuditLog {
   @@index([walletAddress])
   @@index([path])
   @@index([createdAt])
+}
+
+// ========== PRIVACY / GDPR MODELS (Issue #1107) ==========
+
+model PrivacyRequest {
+  id            String    @id @default(cuid())
+  walletAddress String
+  requestType   String    // 'export' | 'deletion'
+  status        String    @default("pending") // pending | processing | completed | failed
+  completedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([walletAddress])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ========== AUTH SESSION MODELS (Issue #1106) ==========
+
+model RefreshToken {
+  id            String    @id @default(cuid())
+  tokenHash     String    @unique          // SHA-256 of the raw token
+  walletAddress String
+  familyId      String                     // all tokens in one login chain share a familyId
+  used          Boolean   @default(false)  // true once rotated (reuse = theft)
+  revokedAt     DateTime?                  // set on revocation; null = still valid
+  expiresAt     DateTime
+  createdAt     DateTime  @default(now())
+
+  @@index([walletAddress])
+  @@index([familyId])
+  @@index([expiresAt])
 }
 
 // ========== REPUTATION MODELS (Issue #800) ==========

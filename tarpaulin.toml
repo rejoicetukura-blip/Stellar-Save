@@ -3,7 +3,7 @@
 target-dir = "target"
 workspace = true
 features = ["testutils"]
-out = ["Html"]
+out = ["Html", "Xml"]
 output-dir = "coverage"
 fail-under = 85
 timeout = "120s"

@@ -34,3 +34,19 @@ provider "aws" {
     }
   }
 }
+
+# Secondary region provider for cross-region read replica and DR resources.
+# Defaults to the same value as the primary region when multi-region is disabled,
+# so plans remain valid for single-region deploys.
+provider "aws" {
+  alias  = "secondary"
+  region = var.secondary_aws_region
+
+  default_tags {
+    tags = {
+      Project   = "stellar-save"
+      ManagedBy = "terraform"
+      Env       = "production"
+    }
+  }
+}

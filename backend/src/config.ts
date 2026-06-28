@@ -47,6 +47,25 @@ const envSchema = z.object({
     .min(1, 'ADMIN_SECRET must not be empty')
     .default('super-secret-admin-key'),
 
+  // ── Auth / JWT ────────────────────────────────────────────────────────────
+  JWT_SECRET: z
+    .string()
+    .min(32, 'JWT_SECRET must be at least 32 characters')
+    .default('stellar-save-jwt-secret-change-in-production-min32chars'),
+  JWT_ACCESS_TOKEN_TTL: z.string().default('15m'),
+  JWT_REFRESH_TOKEN_TTL_DAYS: z
+    .string()
+    .regex(/^\d+$/)
+    .default('30')
+    .transform(Number),
+
+  // ── Privacy / GDPR ────────────────────────────────────────────────────────
+  PII_RETENTION_DAYS: z
+    .string()
+    .regex(/^\d+$/)
+    .default('365')
+    .transform(Number),
+
   // ── Stellar / Soroban ─────────────────────────────────────────────────────
   STELLAR_NETWORK: z
     .enum(['testnet', 'mainnet', 'futurenet', 'standalone'])
@@ -145,6 +164,16 @@ export const config = {
 
   admin: {
     secret: env.ADMIN_SECRET,
+  },
+
+  auth: {
+    jwtSecret: env.JWT_SECRET,
+    accessTokenTtl: env.JWT_ACCESS_TOKEN_TTL,
+    refreshTokenTtlDays: env.JWT_REFRESH_TOKEN_TTL_DAYS,
+  },
+
+  privacy: {
+    piiRetentionDays: env.PII_RETENTION_DAYS,
   },
 
   stellar: {

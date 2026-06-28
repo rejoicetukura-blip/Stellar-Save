@@ -1,5 +1,11 @@
 # Stellar-Save — Rotational Savings on Stellar
 
+[![Coverage](https://codecov.io/gh/Xoulomon/Stellar-Save/branch/main/graph/badge.svg)](https://codecov.io/gh/Xoulomon/Stellar-Save)
+[![Coverage workflow](https://github.com/Xoulomon/Stellar-Save/actions/workflows/coverage.yml/badge.svg)](https://github.com/Xoulomon/Stellar-Save/actions/workflows/coverage.yml)
+[![frontend](https://codecov.io/gh/Xoulomon/Stellar-Save/branch/main/graph/badge.svg?flag=frontend)](https://codecov.io/gh/Xoulomon/Stellar-Save?flags[0]=frontend)
+[![contracts](https://codecov.io/gh/Xoulomon/Stellar-Save/branch/main/graph/badge.svg?flag=contracts)](https://codecov.io/gh/Xoulomon/Stellar-Save?flags[0]=contracts)
+[![backend](https://codecov.io/gh/Xoulomon/Stellar-Save/branch/main/graph/badge.svg?flag=backend)](https://codecov.io/gh/Xoulomon/Stellar-Save?flags[0]=backend)
+
 **A decentralized rotational savings and credit association (ROSCA) built on Stellar Soroban smart contracts.**
 
 Stellar Save is a traditional community-based savings system where members contribute a fixed amount regularly, and each member receives the total pool on a rotating basis. This project brings this time-tested financial mechanism to the blockchain, making it transparent, trustless, and accessible globally.
@@ -188,6 +194,37 @@ Run tests:
 ```bash
 cargo test
 ```
+
+### Test Coverage
+
+Coverage is tracked and enforced per workspace and published to
+[Codecov](https://codecov.io/gh/Xoulomon/Stellar-Save), which provides public
+reports and historical trends.
+
+| Workspace  | Tool             | Minimum coverage gate |
+|------------|------------------|-----------------------|
+| frontend   | vitest (v8)      | 80% lines / 70% branches |
+| contracts  | cargo-tarpaulin  | 85% lines |
+| backend    | jest (ts-jest)   | 60% lines |
+
+PRs **cannot merge** if coverage falls below these targets or drops versus the
+base commit: the `coverage.yml` workflow uploads results to Codecov on every
+push and pull request, and the Codecov project/patch status checks (configured
+in [`codecov.yml`](./codecov.yml)) act as required PR merge gates. The same
+thresholds also fail CI locally via per-tool gates (tarpaulin `fail-under`,
+vitest `coverage.thresholds`, jest `coverageThreshold`).
+
+Run coverage locally:
+```bash
+# contracts
+cargo tarpaulin --config tarpaulin.toml
+# frontend
+cd frontend && npm run test:coverage
+# backend
+cd backend && npm run test:coverage
+```
+
+See [docs/test-coverage.md](docs/test-coverage.md) for full details.
 
 ## 🌍 Why This Matters
 

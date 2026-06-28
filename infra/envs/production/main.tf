@@ -39,6 +39,70 @@ module "frontend" {
   tags = merge(local.common_tags, { Service = "frontend" })
 }
 
+# ── Cross-region read replica (secondary region) ──────────────────────────────
+# Disabled by default; enable via enable_cross_region_replica = true.
+module "rds_read_replica" {
+  source = "../../modules/rds-read-replica"
+
+  providers = {
+    aws.replica = aws.secondary
+  }
+
+  environment    = "production"
+  create         = var.enable_cross_region_replica
+  source_db_arn  = module.rds.db_instance_arn
+  replica_region = var.secondary_aws_region
+
+  instance_class             = "db.t3.small"
+  multi_az                   = true
+  vpc_id                     = var.replica_vpc_id
+  subnet_ids                 = var.replica_subnet_ids
+  allowed_security_group_ids = var.replica_security_group_ids
+  kms_key_id                 = var.replica_kms_key_id
+
+  tags = {
+    Project    = "stellar-save"
+    ManagedBy  = "terraform"
+    StellarNet = "mainnet"
+  }
+}
+
+# ── Multi-region Route53 geo/latency routing + health-check failover ──────────
+# Disabled by default; enable via enable_multi_region = true.
+module "multi_region" {
+  source = "../../modules/multi-region"
+  count  = var.enable_multi_region ? 1 : 0
+
+  environment    = "production"
+  hosted_zone_id = var.hosted_zone_id
+  record_name    = var.routing_record_name
+  routing_policy = var.routing_policy
+
+  regions = {
+    "${var.aws_region}-primary" = {
+      aws_region          = var.aws_region
+      endpoint_domain     = var.primary_endpoint_domain
+      geolocation_default = true
+    }
+    "${var.secondary_aws_region}-secondary" = {
+      aws_region            = var.secondary_aws_region
+      endpoint_domain       = var.secondary_endpoint_domain
+      geolocation_continent = "EU"
+    }
+  }
+
+  # Also expose an explicit PRIMARY/SECONDARY failover record set.
+  enable_dns_failover    = true
+  failover_primary_key   = "${var.aws_region}-primary"
+  failover_secondary_key = "${var.secondary_aws_region}-secondary"
+
+  tags = {
+    Project    = "stellar-save"
+    ManagedBy  = "terraform"
+    StellarNet = "mainnet"
+  }
+}
+
 # CodeDeploy Blue-Green Deployment Configuration
 module "codedeploy" {
   source = "../../modules/codedeploy-blue-green"

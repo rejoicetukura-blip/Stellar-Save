@@ -9,14 +9,21 @@ import { ToastProvider } from './components/Toast';
 import App from './App';
 import { ErrorBoundary } from './components/ErrorBoundary/ErrorBoundary';
 import { queryClient } from './lib/queryClient';
+import { registerServiceWorker } from './notifications/serviceWorkerRegistration';
 import './index.css';
 
-// Register service worker for PWA support
+// Initialise distributed tracing (no-op unless VITE_OTEL_ENABLED=true).
+// Loaded lazily so the OpenTelemetry packages stay out of the main bundle.
+if (import.meta.env.VITE_OTEL_ENABLED === 'true') {
+  import('./lib/tracing').then((m) => m.startTracing()).catch(() => {
+    // Tracing must never break app startup.
+  });
+}
+
+// Register service worker for PWA support (caching, offline, push, updates).
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {
-      // SW registration failure is non-fatal
-    });
+    void registerServiceWorker();
   });
 }
 
