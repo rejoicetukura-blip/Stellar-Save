@@ -26,6 +26,7 @@
     "test:visual:ci": "percy exec -- playwright test --config=playwright.visual.config.ts --reporter=github"
   },
   "dependencies": {
+    "@stellar-save/sdk": "workspace:*",
     "@tanstack/react-query": "5.80.7",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",

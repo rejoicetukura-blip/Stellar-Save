@@ -206,6 +206,7 @@ app.use('/api', versionMiddleware);
 app.use('/api/v1', createV1Router(services));
 app.use('/api/v2', createV2Router(services));
 app.use('/api/webhooks', createWebhookRouter());
+app.use('/api/v1/costs', createCostRouter());
 
 // ── Fiat ramp routes (strict rate limiting + CAPTCHA gate) ────────────────────
 app.use('/api/ramp', createRampRouter());
