@@ -29,6 +29,7 @@ const AboutPage = lazy(() => import("../pages/AboutPage"));
 const FeedbackAdminPage = lazy(() => import("../pages/FeedbackAdminPage"));
 const TransactionHistoryPage = lazy(() => import("../pages/TransactionHistoryPage"));
 const TransactionBuilderPage = lazy(() => import("../pages/TransactionBuilderPage"));
+const HardwareWalletPage = lazy(() => import("../pages/HardwareWalletPage"));
 
 export const routeConfig: RouteConfig[] = [
   {
@@ -173,6 +174,13 @@ export const routeConfig: RouteConfig[] = [
     protected: true,
     title: "Transaction Builder - Stellar Save",
     description: "Build and simulate multi-step transactions",
+  },
+  {
+    path: ROUTES.HARDWARE_WALLET,
+    component: HardwareWalletPage,
+    protected: true,
+    title: "Hardware Wallet - Stellar Save",
+    description: "Connect and manage Ledger/Trezor hardware wallets",
   },
   {
     path: ROUTES.GROUP_JOIN,
