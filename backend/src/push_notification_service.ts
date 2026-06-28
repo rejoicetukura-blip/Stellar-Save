@@ -2,6 +2,7 @@ import https from 'https';
 import jwt from 'jsonwebtoken';
 import { logger } from './logger';
 import { deviceTokenService } from './device_token_service';
+import { config } from './config';
 
 /**
  * Abstract interface for push notification providers
@@ -212,19 +213,16 @@ export class PushNotificationService {
 
   constructor() {
     this.setupProviders();
-    this.defaultProvider = process.env.PUSH_PROVIDER || 'firebase';
+    this.defaultProvider = config.push.provider;
   }
 
-  /**
-   * Initialize configured push providers
-   */
   private setupProviders(): void {
     // Firebase provider
-    if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_SERVICE_ACCOUNT) {
+    if (config.push.firebase.projectId && config.push.firebase.serviceAccount) {
       try {
         const firebase = new FirebaseProvider(
-          process.env.FIREBASE_PROJECT_ID,
-          process.env.FIREBASE_SERVICE_ACCOUNT
+          config.push.firebase.projectId,
+          config.push.firebase.serviceAccount
         );
         this.providers.set('firebase', firebase);
         logger.info('Firebase provider initialized');
@@ -234,11 +232,11 @@ export class PushNotificationService {
     }
 
     // OneSignal provider
-    if (process.env.ONESIGNAL_APP_ID && process.env.ONESIGNAL_API_KEY) {
+    if (config.push.onesignal.appId && config.push.onesignal.apiKey) {
       try {
         const oneSignal = new OneSignalProvider(
-          process.env.ONESIGNAL_APP_ID,
-          process.env.ONESIGNAL_API_KEY
+          config.push.onesignal.appId,
+          config.push.onesignal.apiKey
         );
         this.providers.set('onesignal', oneSignal);
         logger.info('OneSignal provider initialized');
@@ -248,14 +246,14 @@ export class PushNotificationService {
     }
 
     // APNs provider
-    if (process.env.APNS_KEY_ID && process.env.APNS_TEAM_ID && process.env.APNS_KEY && process.env.APNS_BUNDLE_ID) {
+    if (config.apns.keyId && config.apns.teamId && config.apns.key && config.apns.bundleId) {
       try {
         const apns = new ApnsProvider(
-          process.env.APNS_KEY_ID,
-          process.env.APNS_TEAM_ID,
-          process.env.APNS_KEY.replace(/\\n/g, '\n'),
-          process.env.APNS_BUNDLE_ID,
-          process.env.NODE_ENV === 'production'
+          config.apns.keyId,
+          config.apns.teamId,
+          config.apns.key.replace(/\\n/g, '\n'),
+          config.apns.bundleId,
+          config.nodeEnv === 'production'
         );
         this.providers.set('apns', apns);
         logger.info('APNs provider initialized');

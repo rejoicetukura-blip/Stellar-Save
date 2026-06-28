@@ -1,5 +1,6 @@
 import { rpc as SorobanRpc } from '@stellar/stellar-sdk';
 import { withSpan } from '../tracing';
+import { config } from '../config';
 
 export interface SorobanPoolConfig {
   rpcUrl: string;
@@ -112,9 +113,9 @@ let _pool: SorobanClientPool | null = null;
 export function getSorobanPool(): SorobanClientPool {
   if (!_pool) {
     _pool = new SorobanClientPool({
-      rpcUrl: process.env.STELLAR_RPC_URL || 'https://soroban-testnet.stellar.org',
-      poolSize: parseInt(process.env.SOROBAN_POOL_SIZE || '5'),
-      acquireTimeoutMs: parseInt(process.env.SOROBAN_POOL_TIMEOUT_MS || '5000'),
+      rpcUrl: config.stellar.rpcUrl,
+      poolSize: config.soroban.poolSize,
+      acquireTimeoutMs: config.soroban.poolTimeoutMs,
     });
   }
   return _pool;

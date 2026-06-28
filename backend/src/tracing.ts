@@ -27,19 +27,12 @@
  */
 
 import { context, trace, SpanStatusCode, type Span } from '@opentelemetry/api';
+import { config } from './config';
 
-const SERVICE_NAME = process.env.OTEL_SERVICE_NAME || 'stellar-save-backend';
+const SERVICE_NAME = config.tracing.serviceName;
 
-/**
- * Resolve whether tracing should be active. Disabled unless explicitly enabled
- * or a collector endpoint is provided.
- */
 function tracingEnabled(): boolean {
-  if (process.env.OTEL_TRACES_ENABLED === 'false') return false;
-  return (
-    process.env.OTEL_TRACES_ENABLED === 'true' ||
-    Boolean(process.env.OTEL_EXPORTER_OTLP_ENDPOINT)
-  );
+  return config.tracing.enabled || Boolean(config.tracing.otlpEndpoint);
 }
 
 let started = false;
@@ -74,17 +67,15 @@ export function startTracing(): void {
     } = require('@opentelemetry/sdk-trace-base');
     /* eslint-enable @typescript-eslint/no-var-requires */
 
-    const ratio = Number(process.env.OTEL_TRACES_SAMPLER_ARG ?? '0.1');
+    const ratio = config.tracing.samplerArg;
     const sampler = new ParentBasedSampler({
       root: new TraceIdRatioBasedSampler(Number.isFinite(ratio) ? ratio : 0.1),
     });
 
     // OTLP/HTTP exporter. If only a base endpoint is given, the exporter appends
     // the standard /v1/traces path automatically.
-    const endpoint = process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT;
-    const exporter = new OTLPTraceExporter(
-      endpoint ? { url: endpoint } : undefined,
-    );
+    const endpoint = process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || config.tracing.otlpEndpoint + '/v1/traces';
+    const exporter = new OTLPTraceExporter({ url: endpoint });
 
     const sdk = new NodeSDK({
       resource: resourceFromAttributes({

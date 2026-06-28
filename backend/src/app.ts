@@ -1,15 +1,10 @@
 import express from 'express';
 import cors, { CorsOptions } from 'cors';
-
-const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || '')
-  .split(',')
-  .map(o => o.trim())
-  .filter(Boolean);
+import { config } from './config';
 
 const corsOptions: CorsOptions = {
   origin(origin, callback) {
-    // Allow server-to-server requests (no origin) and listed origins
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (!origin || config.cors.allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       callback(new Error(`CORS: origin '${origin}' not allowed`));

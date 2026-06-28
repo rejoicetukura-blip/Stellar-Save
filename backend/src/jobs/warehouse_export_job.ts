@@ -5,6 +5,7 @@
 import { S3Client } from '@aws-sdk/client-s3';
 import { WarehouseExportPipeline } from '../warehouse_export';
 import { logger } from '../logger';
+import { config } from '../config';
 
 let timer: ReturnType<typeof setInterval> | null = null;
 
@@ -14,14 +15,14 @@ export function startWarehouseExportJob(opts: {
   region?: string;
   alertWebhook?: string;
 }): void {
-  const bucket = opts.bucket || process.env.BACKUP_S3_BUCKET || 'stellar-save-warehouse';
-  const intervalMs = opts.intervalMs ?? 60 * 60 * 1000; // default: hourly
+  const bucket = opts.bucket || config.backup.bucket;
+  const intervalMs = opts.intervalMs ?? 60 * 60 * 1000;
 
-  const s3 = new S3Client({ region: opts.region || process.env.AWS_REGION || 'us-east-1' });
+  const s3 = new S3Client({ region: opts.region || config.aws.region });
   const pipeline = new WarehouseExportPipeline({
     s3Client: s3,
     bucket,
-    alertWebhook: opts.alertWebhook || process.env.BACKUP_ALERT_WEBHOOK_URL,
+    alertWebhook: opts.alertWebhook || config.backup.alertWebhookUrl,
   });
 
   const run = async () => {

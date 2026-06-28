@@ -11,6 +11,7 @@
 import * as sgMail from '@sendgrid/mail';
 import { prisma } from '../prisma_client';
 import { logger } from '../logger';
+import { config } from '../config';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -131,9 +132,9 @@ export async function sendContributionReminder(
   deadline: Date,
   window: ReminderWindow = '24h'
 ): Promise<ReminderResult> {
-  const apiKey = process.env.SENDGRID_API_KEY;
-  const fromEmail = process.env.SENDGRID_FROM_EMAIL ?? 'noreply@stellar-save.com';
-  const appUrl = process.env.APP_URL ?? 'https://stellar-save.app';
+  const apiKey = config.sendgrid.apiKey;
+  const fromEmail = config.sendgrid.fromEmail;
+  const appUrl = config.urls.app;
 
   // ── 1. Check user notification preferences ────────────────────────────────
   try {
@@ -191,7 +192,7 @@ export async function sendContributionReminder(
     const [response] = await sgMail.send({
       to: member.email,
       from: fromEmail,
-      replyTo: process.env.SENDGRID_REPLY_TO ?? 'support@stellar-save.com',
+      replyTo: config.sendgrid.replyTo,
       subject,
       html,
       text,

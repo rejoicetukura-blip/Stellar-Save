@@ -1,5 +1,6 @@
 import { prisma } from './prisma_client';
 import { logger } from './logger';
+import { config } from './config';
 
 export interface FraudScore {
   entityType: 'account' | 'group';
@@ -12,9 +13,9 @@ export interface FraudScore {
 const HIGH_RISK_THRESHOLD = 0.7;
 
 export class FraudDetectionService {
-  private readonly sybilThreshold = parseInt(process.env.FRAUD_SYBIL_THRESHOLD || '3', 10);
-  private readonly rapidCycleHours = parseInt(process.env.FRAUD_RAPID_CYCLE_HOURS || '24', 10);
-  private readonly outlierFactor = parseFloat(process.env.FRAUD_CONTRIBUTION_OUTLIER_FACTOR || '3');
+  private readonly sybilThreshold = config.fraud.sybilThreshold;
+  private readonly rapidCycleHours = config.fraud.rapidCycleHours;
+  private readonly outlierFactor = config.fraud.outlierFactor;
 
   async scoreAccount(address: string): Promise<FraudScore> {
     const windowMs = this.rapidCycleHours * 60 * 60 * 1000;

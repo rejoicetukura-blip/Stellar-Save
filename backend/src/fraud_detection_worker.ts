@@ -1,9 +1,10 @@
 import { fraudDetectionService } from './fraud_detection_service';
 import { logger } from './logger';
+import { config } from './config';
 
 export class FraudDetectionWorker {
   private intervalId?: NodeJS.Timer;
-  private readonly scanIntervalMinutes = parseInt(process.env.FRAUD_SCAN_INTERVAL_MINUTES || '60', 10);
+  private readonly scanIntervalMinutes = config.fraud.scanIntervalMinutes;
 
   async start() {
     logger.info('Starting fraud detection worker', { intervalMinutes: this.scanIntervalMinutes });

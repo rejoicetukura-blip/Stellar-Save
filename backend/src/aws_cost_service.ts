@@ -21,6 +21,7 @@ import {
 import { Gauge, Counter } from 'prom-client';
 import { registry } from './metrics';
 import logger from './logger';
+import { config } from './config';
 
 // ── Prometheus metrics ────────────────────────────────────────────────────────
 
@@ -94,15 +95,11 @@ export interface CostReport {
 // ── Client setup ──────────────────────────────────────────────────────────────
 
 function makeCostExplorer(): CostExplorerClient {
-  return new CostExplorerClient({
-    region: process.env.AWS_REGION ?? 'us-east-1',
-  });
+  return new CostExplorerClient({ region: config.aws.region });
 }
 
 function makeComputeOptimizer(): ComputeOptimizerClient {
-  return new ComputeOptimizerClient({
-    region: process.env.AWS_REGION ?? 'us-east-1',
-  });
+  return new ComputeOptimizerClient({ region: config.aws.region });
 }
 
 // ── Cost Explorer helpers ─────────────────────────────────────────────────────

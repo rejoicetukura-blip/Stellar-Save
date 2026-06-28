@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import winston from 'winston';
 import 'winston-daily-rotate-file';
+import { config } from './config';
 
 // ── Winston logger with JSON formatter and daily log rotation ─────────────────
 
@@ -28,7 +29,7 @@ const transports: winston.transport[] = [
 ];
 
 export const winstonLogger = winston.createLogger({
-  level: process.env.LOG_LEVEL || 'info',
+  level: config.logging.level,
   defaultMeta: { service: 'stellar-save-backend' },
   transports,
 });

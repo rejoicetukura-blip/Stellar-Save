@@ -15,6 +15,7 @@ import { Request, Response, NextFunction } from 'express';
 import { logger } from './logger';
 import { Counter } from 'prom-client';
 import { registry } from './metrics';
+import { config } from './config';
 
 // ── Metrics ───────────────────────────────────────────────────────────────────
 
@@ -247,10 +248,9 @@ export function rampCaptchaGate() {
  * already been used (replay protection).
  */
 async function verifyCaptchaToken(token: string, _remoteIp: string): Promise<boolean> {
-  const secret = process.env.CAPTCHA_SECRET_KEY;
+  const secret = config.captcha.secretKey;
   if (!secret) {
-    // No provider configured — allow in development, block in production
-    if (process.env.NODE_ENV === 'production') {
+    if (config.nodeEnv === 'production') {
       logger.error('[fiat-ramp] CAPTCHA_SECRET_KEY not set in production');
       return false;
     }

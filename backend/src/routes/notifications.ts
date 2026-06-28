@@ -6,6 +6,7 @@ import { UserPreferenceManager } from '../user_preference_manager';
 import { NotificationTemplateManager } from '../notification_template_manager';
 import { deviceTokenService } from '../device_token_service';
 import { logger } from '../logger';
+import { config } from '../config';
 
 /**
  * Notification Service Routes
@@ -152,7 +153,7 @@ export function createNotificationRouter(): Router {
           <body>
             <h1>Unsubscribed</h1>
             <p>You have been unsubscribed from all notifications.</p>
-            <p><a href="${process.env.FRONTEND_URL || 'https://stellar-save.com'}">Return to Stellar-Save</a></p>
+            <p><a href="${config.urls.frontend}">Return to Stellar-Save</a></p>
           </body>
         </html>
       `);
@@ -542,7 +543,7 @@ export function createNotificationRouter(): Router {
       status: 'ok',
       timestamp: new Date(),
       providers: {
-        email: !!process.env.SENDGRID_API_KEY,
+        email: !!config.sendgrid.apiKey,
         push: pushNotificationService.getAvailableProviders(),
         webPush: webPushService.isEnabled(),
       },
