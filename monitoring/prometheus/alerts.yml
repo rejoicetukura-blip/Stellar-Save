@@ -159,43 +159,23 @@ groups:
         summary: "Stellar mainnet fees > 10 XLM in 1 hour"
         description: "{{ $value | humanize }} XLM in fees last hour. Check for runaway transactions."
 
-    # ── AWS cost spikes ───────────────────────────────────────────────────────
-    - alert: AwsCostSpikeDetected
+    # ── Fiat ramp abuse protection ─────────────────────────────────────────────
+    - alert: FiatRampRateLimitBreachSpike
       expr: |
-        increase(aws_cost_spike_total{app="stellar-save-backend"}[1h]) > 0
-      for: 0m
+        increase(fiat_ramp_rate_limit_breaches_total[5m]) > 10
+      for: 1m
       labels:
         severity: warning
       annotations:
-        summary: "AWS cost spike detected for {{ $labels.service }}"
-        description: "Service {{ $labels.service }} spend increased >20% since last check."
+        summary: "Fiat ramp rate-limit breaches spiking"
+        description: "More than 10 ramp rate-limit breaches in 5 minutes on endpoint {{ $labels.endpoint }}. Possible abuse attempt."
 
-    - alert: AwsServiceCostHigh
+    - alert: FiatRampAnomalyFlagSustained
       expr: |
-        aws_cost_by_service_usd{app="stellar-save-backend"} > 20
-      for: 0m
+        increase(fiat_ramp_anomaly_flags_total[10m]) > 5
+      for: 2m
       labels:
-        severity: warning
+        severity: critical
       annotations:
-        summary: "AWS service {{ $labels.service }} cost > $20/month"
-        description: "{{ $labels.service }} is costing ${{ $value | humanize }}/month. Review usage."
-
-    - alert: AwsMonthlyCostForecastHigh
-      expr: |
-        aws_cost_forecast_usd{app="stellar-save-backend"} > 50
-      for: 0m
-      labels:
-        severity: warning
-      annotations:
-        summary: "AWS monthly cost forecast > $50"
-        description: "Forecasted AWS spend this month: ${{ $value | humanize }}. Check Cost Explorer."
-
-    - alert: AwsOptimizationSavingsAvailable
-      expr: |
-        sum(aws_optimization_savings_usd{app="stellar-save-backend"}) > 10
-      for: 0m
-      labels:
-        severity: info
-      annotations:
-        summary: "Compute Optimizer: ${{ $value | humanize }} savings available"
-        description: "Right-sizing recommendations could save ${{ $value | humanize }}/month. Review /api/v1/costs/report."
+        summary: "Sustained fiat ramp anomalies detected"
+        description: "Anomaly reason '{{ $labels.reason }}' flagged >5 times in 10 minutes on {{ $labels.endpoint }}. Investigate immediately."
