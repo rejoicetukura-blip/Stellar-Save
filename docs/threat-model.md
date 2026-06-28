@@ -2,6 +2,10 @@
 
 This document describes the security model for the Stellar-Save smart contract, a ROSCA (Rotating Savings and Credit Association) built on Stellar Soroban. It covers what the contract trusts, what it verifies, identified attack vectors and their mitigations, and what is explicitly out of scope.
 
+For a tabular reference of privileged-role trust boundaries and the formal invariants the
+contract guarantees (each mapped to its protecting test), see
+[security-invariants.md](security-invariants.md).
+
 ---
 
 ## 1. Trust Model

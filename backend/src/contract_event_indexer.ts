@@ -2,6 +2,7 @@ import { Horizon } from '@stellar/stellar-sdk';
 import { PrismaClient } from './generated/prisma/client';
 import { WebPushService } from './web_push_service';
 import { eventsIndexedTotal, sorobanRpcCallsTotal } from './metrics';
+import { GroupStateCache, isStateMutatingEvent } from './lib/cache';
 
 // Event types emitted by the Stellar savings contract
 const PAYOUT_EVENT_TYPES = ['payout', 'payout_received', 'payoutreceived', 'payout_processed'];
@@ -127,38 +128,55 @@ export class ContractEventIndexer {
     console.log(`[ContractEventIndexer] Starting from cursor=${cursor}`);
 
     while (this.isRunning) {
-      try {
-        const url = new URL('/events', this.server.serverURL.toString());
-        url.searchParams.set('contract', this.contractId);
-        url.searchParams.set('startLedger', cursor);
-        url.searchParams.set('order', 'asc');
-        url.searchParams.set('limit', String(PAGE_LIMIT));
+      // Each poll iteration is its own root span. Event-handling work below
+      // becomes a child span so latency of fetch vs. DB write is visible.
+      // The span resolves to the number of ms to wait before the next poll.
+      const delayMs = await withSpan(
+        'indexer.poll',
+        { 'indexer.contract_id': this.contractId, 'indexer.cursor': cursor },
+        async (span): Promise<number> => {
+          const url = new URL('/events', this.server.serverURL.toString());
+          url.searchParams.set('contract', this.contractId);
+          url.searchParams.set('startLedger', cursor);
+          url.searchParams.set('order', 'asc');
+          url.searchParams.set('limit', String(PAGE_LIMIT));
 
-        const response = await fetch(url.toString());
-        sorobanRpcCallsTotal.inc({ method: 'getEvents', status: response.ok ? 'success' : 'error' });
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status} from ${url}`);
-        }
+          const response = await fetch(url.toString());
+          sorobanRpcCallsTotal.inc({ method: 'getEvents', status: response.ok ? 'success' : 'error' });
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status} from ${url}`);
+          }
 
-        const data: any = await response.json();
-        const records: any[] = data._embedded?.records ?? [];
+          const data: any = await response.json();
+          const records: any[] = data._embedded?.records ?? [];
+          span.setAttribute('indexer.records', records.length);
 
-        if (records.length === 0) {
-          await this.delay(POLL_INTERVAL_MS);
-          continue;
-        }
+          // No new events — idle until the next poll interval.
+          if (records.length === 0) {
+            return POLL_INTERVAL_MS;
+          }
 
-        for (const event of data._embedded.records) {
-          await this.storeEventFromHorizon(event);
-          await this.notifyOnEvent(event);
-        }
+          await withSpan(
+            'indexer.process_events',
+            { 'indexer.records': records.length },
+            async () => {
+              for (const event of records) {
+                await this.storeEventFromHorizon(event);
+                await this.notifyOnEvent(event);
+              }
+            },
+          );
 
-        // Update cursor to the last processed event
-        cursor = data._embedded.records[data._embedded.records.length - 1].paging_token;
-      } catch (error) {
+          // Update cursor to the last processed event and keep draining (no delay).
+          cursor = records[records.length - 1].paging_token;
+          return 0;
+        },
+      ).catch((error) => {
         console.error('[ContractEventIndexer] Poll error:', error);
-        await this.delay(ERROR_BACKOFF_MS);
-      }
+        return ERROR_BACKOFF_MS;
+      });
+
+      if (delayMs > 0) await this.delay(delayMs);
     }
   }
 
@@ -208,20 +226,35 @@ export class ContractEventIndexer {
 
   private async storeEvent(event: any): Promise<void> {
     try {
-      const stored = await this.prisma.contractEvent.create({
-        data: {
-          contractId: event.contractId || this.contractId,
-          eventType: event.type || 'unknown',
-          topics: event.topic || [],
-          data: event.data || {},
-          txHash: event.transactionHash || event.txHash,
-          ledgerSeq: event.ledger || event.ledgerSeq,
-          timestamp: event.createdAt ? new Date(event.createdAt) : new Date(),
-          blockTime: event.createdAt ? new Date(event.createdAt) : new Date(),
-        },
-      });
+      const stored = await withSpan(
+        'indexer.db.insert_event',
+        { 'db.system': 'postgresql', 'db.operation': 'insert', 'event.type': event.type || 'unknown' },
+        () =>
+          this.prisma.contractEvent.create({
+            data: {
+              contractId: event.contractId || this.contractId,
+              eventType: event.type || 'unknown',
+              topics: event.topic || [],
+              data: event.data || {},
+              txHash: event.transactionHash || event.txHash,
+              ledgerSeq: event.ledger || event.ledgerSeq,
+              timestamp: event.createdAt ? new Date(event.createdAt) : new Date(),
+              blockTime: event.createdAt ? new Date(event.createdAt) : new Date(),
+            },
+          }),
+      );
       console.log(`Stored event: ${event.type} in ledger ${event.ledger}`);
       eventsIndexedTotal.inc({ event_type: event.type || 'unknown' });
+
+      // Bust cache for state-mutating events
+      if (isStateMutatingEvent(stored.eventType)) {
+        const groupId = this.extractGroupId(stored.data);
+        if (groupId) {
+          await GroupStateCache.invalidate(stored.contractId, String(groupId), stored.eventType);
+        } else {
+          await GroupStateCache.invalidateContract(stored.contractId, stored.eventType);
+        }
+      }
 
       // Deliver signed webhook notifications for group events
       const webhookEvent = this.mapToWebhookEvent(stored.eventType);

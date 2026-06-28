@@ -1,4 +1,5 @@
 import { rpc as SorobanRpc } from '@stellar/stellar-sdk';
+import { withSpan } from '../tracing';
 
 export interface SorobanPoolConfig {
   rpcUrl: string;
@@ -63,13 +64,34 @@ export class SorobanClientPool {
     this.pool.push(client);
   }
 
-  async withClient<T>(fn: (client: SorobanRpc.Server) => Promise<T>): Promise<T> {
-    const client = await this.acquire();
-    try {
-      return await fn(client);
-    } finally {
-      this.release(client);
-    }
+  /**
+   * Run `fn` with a pooled Soroban RPC client, wrapped in an OpenTelemetry span
+   * so contract-execution latency (simulate / invoke) shows up in the trace.
+   *
+   * Full in-wasm contract tracing is not possible, so this span around the host
+   * RPC call is the distributed-tracing boundary for contract execution. Pass
+   * the contract function name as `op` (e.g. `contribute`) to label the span and
+   * carry the active trace context to the RPC node.
+   *
+   * @param fn  Work to perform with the client
+   * @param op  Optional contract function / RPC operation name for the span
+   */
+  async withClient<T>(
+    fn: (client: SorobanRpc.Server) => Promise<T>,
+    op?: string,
+  ): Promise<T> {
+    return withSpan(
+      op ? `soroban.invoke ${op}` : 'soroban.rpc',
+      { 'rpc.system': 'soroban', ...(op ? { 'soroban.function': op } : {}) },
+      async () => {
+        const client = await this.acquire();
+        try {
+          return await fn(client);
+        } finally {
+          this.release(client);
+        }
+      },
+    );
   }
 
   metrics(): PoolMetrics {

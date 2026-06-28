@@ -10,6 +10,11 @@ import type {
   UseGroupsReturn,
 } from '../types/group';
 import { DEFAULT_GROUP_FILTERS } from '../types/group';
+import {
+  getCachedGroupsListWithStatus,
+  cacheGroupsList,
+} from '../lib/db';
+import { useIsOnline } from './useOfflineSync';
 
 // ─── Filtering / sorting helpers ──────────────────────────────────────────────
 
@@ -61,10 +66,13 @@ interface UseGroupsOptions {
  *
  * staleTime: 30_000 — group list changes infrequently; avoids redundant RPC
  * calls while browsing/filtering.
+ * 
+ * Offline-first: Falls back to cached data when offline, shows stale indicator
  */
 export function useGroups(options: UseGroupsOptions = {}): UseGroupsReturn {
   const { initialFilters, initialPageSize = 12 } = options;
   const queryClient = useQueryClient();
+  const isOnline = useIsOnline();
 
   const [filters, setFiltersState] = useState<GroupFilters>({
     ...DEFAULT_GROUP_FILTERS,
@@ -72,11 +80,38 @@ export function useGroups(options: UseGroupsOptions = {}): UseGroupsReturn {
   });
   const [page, setPageState] = useState(1);
   const [pageSize, setPageSizeState] = useState(initialPageSize);
+  const [isStale, setIsStale] = useState(false);
+  const [fromCache, setFromCache] = useState(false);
 
   const { data: rawGroups = [], isLoading, error } = useQuery<PublicGroup[], Error>({
     queryKey: queryKeys.groups.list(filters),
-    queryFn: () => fetchGroups(filters),
+    queryFn: async () => {
+      // Try to fetch from network
+      if (isOnline) {
+        try {
+          const groups = await fetchGroups(filters);
+          // Cache the result
+          await cacheGroupsList(groups);
+          setIsStale(false);
+          setFromCache(false);
+          return groups;
+        } catch (err) {
+          console.warn('[useGroups] Network fetch failed, falling back to cache', err);
+        }
+      }
+
+      // Fall back to cached data
+      const cached = await getCachedGroupsListWithStatus();
+      if (cached.fromCache) {
+        setIsStale(cached.isStale);
+        setFromCache(true);
+        return cached.groups;
+      }
+
+      throw new Error('No data available offline');
+    },
     staleTime: STALE_TIME.GROUP_STATE,
+    retry: false,
   });
 
   // ─── Derived state ──────────────────────────────────────────────────────────
@@ -144,6 +179,8 @@ export function useGroups(options: UseGroupsOptions = {}): UseGroupsReturn {
     isLoading,
     error: error?.message ?? null,
     hasActiveFilters,
+    isStale,
+    fromCache,
     setFilters,
     clearFilters,
     setPage,

@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyJwt } from './auth_service';
+import { config } from './config';
 
 // ── Admin auth (existing) ─────────────────────────────────────────────────────
 
