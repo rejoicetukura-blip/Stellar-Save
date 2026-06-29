@@ -100,6 +100,40 @@ export const eventsIndexedTotal = new Counter({
   registers: [registry],
 });
 
+// ── IPFS Metrics ──────────────────────────────────────────────────────────────
+export const ipfsPinsTotal = new Counter({
+  name: 'ipfs_pins_total',
+  help: 'Total IPFS pin operations',
+  labelNames: ['action', 'status'],
+  registers: [registry],
+});
+
+export const ipfsPinsActive = new Gauge({
+  name: 'ipfs_pins_active',
+  help: 'Number of active IPFS pins tracked',
+  registers: [registry],
+});
+
+export const ipfsQueueDepth = new Gauge({
+  name: 'ipfs_queue_depth',
+  help: 'Current IPFS pinning queue depth',
+  labelNames: ['state'],
+  registers: [registry],
+});
+
+export const ipfsNodeHealthy = new Gauge({
+  name: 'ipfs_node_healthy',
+  help: 'IPFS node health status (1 = healthy, 0 = unhealthy)',
+  registers: [registry],
+});
+
+export const ipfsAddDuration = new Histogram({
+  name: 'ipfs_add_duration_seconds',
+  help: 'Duration of IPFS add operations in seconds',
+  buckets: [0.1, 0.5, 1, 2, 5, 10, 30],
+  registers: [registry],
+});
+
 // ── Middleware ────────────────────────────────────────────────────────────────
 export function metricsMiddleware(req: Request, res: Response, next: NextFunction): void {
   const start = process.hrtime.bigint();

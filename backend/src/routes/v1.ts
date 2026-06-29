@@ -2,7 +2,6 @@ import { Router } from 'express';
 import { format as fastCsvFormat } from 'fast-csv';
 
 import { RecommendationEngine } from '../recommendation';
-import { ABTestingFramework } from '../ab_testing';
 import { EmailService } from '../email_service';
 import { ExportService } from '../export_service';
 import { BackupService, S3HttpClient } from '../backup_service';
@@ -15,6 +14,9 @@ import { FeedbackService } from '../feedback_service';
 import { createAnalyticsMiddlewareStack, createAnalyticsCacheMiddleware } from '../analytics_middleware';
 import { Group, UserInteraction, UserPreference } from '../models';
 import { createNotificationRouter } from './notifications';
+import { createSseRouter } from './sse';
+import { createInsuranceRouter } from './insurance';
+import { createGovernanceRouter } from './governance';
 import { adminAuthMiddleware } from '../auth_middleware';
 import { fraudDetectionService } from '../fraud_detection_service';
 import { apiKeyService } from '../api_key_service';
@@ -23,7 +25,6 @@ import { apiKeyAuthMiddleware, recordApiUsage } from '../api_key_rate_limiter';
 // ── Shared service instances (passed in from app) ────────────────────────────
 export interface V1Services {
   engine: RecommendationEngine;
-  abTest: ABTestingFramework;
   exportService: ExportService;
   backupService: BackupService;
   backupScheduler: BackupScheduler;
@@ -38,7 +39,6 @@ export function createV1Router(services: V1Services): Router {
   const router = Router();
   const {
     engine,
-    abTest,
     exportService,
     backupService,
     backupScheduler,
@@ -74,6 +74,15 @@ export function createV1Router(services: V1Services): Router {
 
   // Notifications (web push subscriptions, preferences, templates)
   router.use('/notifications', createNotificationRouter());
+
+  // SSE event stream (Issue #1011)
+  router.use('/events', createSseRouter(eventIndexer));
+
+  // Insurance pool (Issue #1012)
+  router.use('/groups/:groupId/insurance', createInsuranceRouter());
+
+  // Governance proposals (Issue #1013)
+  router.use('/governance', createGovernanceRouter());
 
   // Search
   router.get('/search', async (req, res) => {
@@ -111,10 +120,8 @@ export function createV1Router(services: V1Services): Router {
   // Recommendations
   router.get('/recommendations/:userId', (req, res) => {
     const { userId } = req.params;
-    const bucket = abTest.getBucket(userId);
-    const algorithm = bucket === 'A' ? 'content' : 'collaborative';
-    const recommendations = engine.getRecommendations(userId, algorithm);
-    res.json({ userId, bucket, algorithm, recommendations });
+    const recommendations = engine.getRecommendations(userId, 'collaborative');
+    res.json({ userId, algorithm: 'collaborative', recommendations });
   });
 
   // Health

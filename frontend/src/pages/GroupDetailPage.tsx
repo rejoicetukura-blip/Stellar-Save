@@ -37,6 +37,7 @@ import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import { AppCard, AppLayout } from '../ui';
 import { Button } from '../components/Button';
 import { ContributionFlow } from '../components/ContributionFlow';
+import { InsurancePanel } from '../components/InsurancePanel';
 import { useNavigation } from '../routing/useNavigation';
 import { useWallet } from '../hooks/useWallet';
 import type { DetailedGroup, GroupMember } from '../utils/groupApi';
@@ -462,6 +463,12 @@ function GroupDetailContent() {
             The order in which members receive the pooled payout. Past recipients are shown in green; the next recipient is highlighted.
           </Typography>
           <PayoutRotationTimeline entries={payoutRotation} />
+        </AppCard>
+
+        {/* Insurance Pool */}
+        <AppCard>
+          <Typography variant="h3" sx={{ mb: 2 }}>Insurance</Typography>
+          <InsurancePanel groupId={groupId} memberAddress={activeAddress ?? undefined} />
         </AppCard>
       </Stack>
 

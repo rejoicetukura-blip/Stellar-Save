@@ -78,6 +78,9 @@ services:
       JWT_SECRET: local-dev-jwt-secret-change-in-prod
       BACKUP_ENABLED: "false"
       INDEXER_ENABLED: "false"
+      IPFS_ENABLED: "true"
+      IPFS_API_URL: http://ipfs:5001
+      IPFS_GATEWAY_URL: http://ipfs:8080
     ports:
       - "3001:3001"
     volumes:
@@ -86,6 +89,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      ipfs:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:3001/health || exit 1"]
@@ -112,6 +117,25 @@ services:
     depends_on:
       - backend
 
+  # ── IPFS node (Kubo) ──────────────────────────────────────────────────────
+  ipfs:
+    image: ipfs/kubo:latest
+    restart: unless-stopped
+    ports:
+      - "5001:5001"   # RPC API
+      - "8080:8080"   # Gateway
+      - "4001:4001"   # Swarm
+    volumes:
+      - ipfs-data:/data/ipfs
+    environment:
+      IPFS_PROFILE: server
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:5001/api/v0/id || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
   # ── Seed: deploy contract + insert test data ──────────────────────────────
   seed:
     image: node:20-alpine
@@ -134,3 +158,4 @@ services:
 volumes:
   postgres-data:
   frontend-node-modules:
+  ipfs-data:

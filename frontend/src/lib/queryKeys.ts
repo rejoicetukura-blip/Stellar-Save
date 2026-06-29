@@ -17,4 +17,16 @@ export const queryKeys = {
   contributions: {
     byGroup: (groupId: string) => ['contributions', groupId] as const,
   },
+
+  // Insurance pool (Issue #1012)
+  insurance: {
+    byGroup: (groupId: string) => ['insurance', groupId] as const,
+  },
+
+  // Governance proposals (Issue #1013)
+  governance: {
+    proposals: () => ['governance', 'proposals'] as const,
+    proposal: (id: string) => ['governance', 'proposals', id] as const,
+    governors: () => ['governance', 'governors'] as const,
+  },
 } as const;

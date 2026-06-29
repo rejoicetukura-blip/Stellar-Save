@@ -199,6 +199,15 @@ const envSchema = z.object({
   // ── TLS ───────────────────────────────────────────────────────────────────
   TLS_KEY_PATH: z.string().optional(),
   TLS_CERT_PATH: z.string().optional(),
+
+  // ── IPFS ────────────────────────────────────────────────────────────────────
+  IPFS_API_URL: z.string().url().default('http://localhost:5001'),
+  IPFS_API_TIMEOUT_MS: z.string().regex(/^\d+$/).default('30000').transform(Number),
+  IPFS_GATEWAY_URL: z.string().url().default('http://localhost:8080'),
+  IPFS_PIN_RETRY_COUNT: z.string().regex(/^\d+$/).default('3').transform(Number),
+  IPFS_PIN_CHECK_INTERVAL_MS: z.string().regex(/^\d+$/).default('5000').transform(Number),
+  IPFS_MONITOR_INTERVAL_MS: z.string().regex(/^\d+$/).default('60000').transform(Number),
+  IPFS_ENABLED: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
 });
 
 // ---------------------------------------------------------------------------
@@ -418,5 +427,15 @@ export const config = {
   tls: {
     keyPath: env.TLS_KEY_PATH,
     certPath: env.TLS_CERT_PATH,
+  },
+
+  ipfs: {
+    enabled: env.IPFS_ENABLED,
+    apiUrl: env.IPFS_API_URL,
+    apiTimeoutMs: env.IPFS_API_TIMEOUT_MS,
+    gatewayUrl: env.IPFS_GATEWAY_URL,
+    pinRetryCount: env.IPFS_PIN_RETRY_COUNT,
+    pinCheckIntervalMs: env.IPFS_PIN_CHECK_INTERVAL_MS,
+    monitorIntervalMs: env.IPFS_MONITOR_INTERVAL_MS,
   },
 } as const;

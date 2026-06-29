@@ -30,8 +30,7 @@ export const ROUTES = {
   MEMBER_PROFILE: "/members/:address",
   ABOUT: "/about",
   FEEDBACK_ADMIN: "/admin/feedback",
-  DEPOSIT: "/ramp/deposit",
-  WITHDRAW: "/ramp/withdraw",
+  GOVERNANCE: "/governance",
   NOT_FOUND: "/404",
   ERROR: "/500",
 } as const;

@@ -18,8 +18,6 @@ import { ApolloServer } from '@apollo/server';
 import { expressMiddleware } from '@apollo/server/express4';
 import { makeExecutableSchema } from '@graphql-tools/schema';
 import { RecommendationEngine } from './recommendation';
-import { ABTestingFramework } from './ab_testing';
-import { Group, UserInteraction } from './models';
 import { EmailService } from './email_service';
 import { ExportService } from './export_service';
 import { BackupService, S3HttpClient } from './backup_service';
@@ -49,6 +47,9 @@ import { errorMiddleware, notFoundMiddleware } from './lib/errorMiddleware';
 import { AuditEventLog, auditMiddleware, createAuditRouter } from './audit_event_log';
 import { initWebSocketGateway } from './ws_gateway';
 import { initReconciliationService } from './reconciliation_service';
+import docsRouter from './docs';
+import { IpfsClient, PinningService, GroupMetadataCache, IpfsMonitor } from './ipfs';
+import { createIpfsRouter } from './routes/ipfs';
 
 const CSP_POLICY = [
   "default-src 'self'",
@@ -128,38 +129,6 @@ app.get('/api/cache/stats', async (req, res) => {
   res.json(stats);
 });
 
-// Example cached endpoint for retirements
-app.get('/api/retirements', cacheMiddleware(60), async (req, res) => {
-  res.json({ 
-    data: 'Retirements data - cached for 60 seconds', 
-    timestamp: new Date(),
-    source: 'database'
-  });
-});
-
-// Write endpoint that invalidates cache
-app.post('/api/retirements', async (req, res) => {
-  await clearCache('/api/retirements');
-  res.json({ 
-    success: true, 
-    message: 'Retirement created, cache cleared',
-    timestamp: new Date()
-  });
-});
-
-// Cached stats endpoint
-app.get('/api/stats', cacheMiddleware(3600), async (req, res) => {
-  res.json({
-    totalRetired: 1000,
-    totalTransactions: 45,
-    timestamp: new Date(),
-    source: 'database'
-  });
-});
-
-// Start cache warming job (preloads popular data)
-startWarmingJob();
-
 // ── GraphQL ───────────────────────────────────────────────────────────────────
 const schema = makeExecutableSchema({ typeDefs, resolvers });
 const apolloServer = new ApolloServer({
@@ -186,22 +155,27 @@ apolloServer.start().then(() => {
 
 const PORT = config.port;
 
-// ── Mock Data ────────────────────────────────────────────────────────────────
-const mockGroups: Group[] = [
-  { id: '1', name: 'Weekly Savers', contributionAmount: 100, cycleDuration: 604800, maxMembers: 10, currentMembers: 5, status: 'Active', tags: ['weekly', 'low-entry'] },
-  { id: '2', name: 'Monthly Builders', contributionAmount: 1000, cycleDuration: 2592000, maxMembers: 12, currentMembers: 3, status: 'Active', tags: ['monthly', 'high-entry'] },
-  { id: '3', name: 'Student Circle', contributionAmount: 50, cycleDuration: 604800, maxMembers: 5, currentMembers: 4, status: 'Active', tags: ['weekly', 'students'] },
-];
+// ── IPFS Services ────────────────────────────────────────────────────────────
+let ipfsClient: IpfsClient | undefined;
+let pinningService: PinningService | undefined;
+let metadataCache: GroupMetadataCache | undefined;
+let ipfsMonitor: IpfsMonitor | undefined;
 
-const mockInteractions: UserInteraction[] = [
-  { userId: 'user1', groupId: '1', interactionType: 'join', timestamp: Date.now() },
-  { userId: 'user1', groupId: '2', interactionType: 'join', timestamp: Date.now() },
-  { userId: 'user2', groupId: '1', interactionType: 'join', timestamp: Date.now() },
-];
+if (config.ipfs.enabled) {
+  ipfsClient = new IpfsClient(config.ipfs.apiUrl, config.ipfs.apiTimeoutMs);
+  pinningService = new PinningService(ipfsClient);
+  metadataCache = new GroupMetadataCache(ipfsClient, pinningService);
+  ipfsMonitor = new IpfsMonitor(ipfsClient, pinningService, config.ipfs.monitorIntervalMs);
+
+  pinningService.start();
+  ipfsMonitor.start();
+
+  console.log(`  IPFS:       ${config.ipfs.apiUrl} (pinning enabled)`);
+}
 
 // ── Services ─────────────────────────────────────────────────────────────────
+import { mockGroups, mockInteractions } from './mock_data';
 const engine = new RecommendationEngine(mockGroups, mockInteractions);
-const abTest = new ABTestingFramework();
 const emailService = new EmailService();
 const exportService = new ExportService(emailService, engine.getInteractions(), engine.getPreferences());
 const s3Client = new S3HttpClient();
@@ -251,10 +225,13 @@ if (config.keeper.enabled) {
   startKeeperJob(config.keeper.schedule, config.indexer.contractId, config.stellar.rpcUrl);
 }
 
-const services = { engine, abTest, exportService, backupService, backupScheduler, recoveryService, backupMonitor, eventIndexer };
+const services = { engine, exportService, backupService, backupScheduler, recoveryService, backupMonitor, eventIndexer };
 
 // ── Auth routes (public — no JWT required) ───────────────────────────────────
 app.use('/api/auth', createAuthRouter());
+
+// ── API Documentation routes ──────────────────────────────────────────────────
+app.use(docsRouter);
 
 // ── User routes (JWT protected) ───────────────────────────────────────────────
 app.use('/api/user', createUserRouter());
@@ -275,6 +252,15 @@ app.use('/api/v2', createV2Router(services));
 app.use('/api/webhooks', createWebhookRouter());
 app.use('/api/v1/costs', createCostRouter());
 app.use('/api/v1/rate-limits', createQuotaReporterRouter());
+
+// ── IPFS routes ──────────────────────────────────────────────────────────────
+if (ipfsClient && pinningService && metadataCache && ipfsMonitor) {
+  app.use(
+    '/api/v1/ipfs',
+    createIpfsRouter(ipfsClient, pinningService, metadataCache, ipfsMonitor),
+  );
+  console.log(`  IPFS API:   http://localhost:${PORT}/api/v1/ipfs`);
+}
 
 // ── Member reputation endpoint (Issue #800) ───────────────────────────────────
 app.get('/api/members/:address/reputation', async (req, res) => {
@@ -324,8 +310,7 @@ const server = hasTls
 server.listen(PORT, async () => {
   console.log(`API server running on port ${PORT}`);
   console.log(`  HTTP/2 enabled${hasTls ? ' (TLS)' : ' (h2c cleartext)'}.`);
-  console.log(`  Versioned:  /api/v1/...  /api/v2/...`);
-  console.log(`  Legacy:     /health  /recommendations  etc. (deprecated)`);
+  console.log(`  Versioned:  /api/v1/...  /api/v2/...`)
   console.log(`  Cache stats: http://localhost:${PORT}/api/cache/stats`);
 
   // Start fraud detection worker (Issue #1028)

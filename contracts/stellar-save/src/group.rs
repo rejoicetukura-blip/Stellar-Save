@@ -1,4 +1,3 @@
-#![allow(deprecated)]
 use core::fmt;
 use soroban_sdk::{contracttype, Address, Env, Map};
 

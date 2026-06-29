@@ -138,6 +138,9 @@ Follow the step-by-step guide in [demo/demo-script.md](demo/demo-script.md)
 
 - [User Guide](docs/user-guide.md)
 - [Architecture Overview](docs/architecture.md)
+- [Public API Reference](docs/api/interactive-api-reference.md) — REST API with code examples
+- [Interactive API Docs](https://api.stellar-save.app/docs) — Try API calls in your browser
+- [Governance Process](docs/governance.md) — How protocol decisions are made on-chain
 - [Storage Layout](docs/storage-layout.md)
 - [Threat Model & Security](docs/threat-model.md)
 - [Performance Optimization Guide](docs/performance-optimization.md)
