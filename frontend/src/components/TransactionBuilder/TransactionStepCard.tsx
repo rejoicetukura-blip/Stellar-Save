@@ -103,22 +103,22 @@ export function TransactionStepCard({
               sx={{ m: 0 }}
             />
 
-            <IconButton size="small" onClick={() => setExpanded(!expanded)}>
+            <IconButton size="small" onClick={() => setExpanded(!expanded)} aria-label={expanded ? 'Collapse step details' : 'Expand step details'}>
               <span style={{ transform: expanded ? 'rotate(180deg)' : 'none', display: 'inline-block' }}>
                 ▼
               </span>
             </IconButton>
 
-            <IconButton size="small" onClick={onDelete} color="error">
+            <IconButton size="small" onClick={onDelete} color="error" aria-label="Delete step">
               ✕
             </IconButton>
           </Box>
 
           <Box sx={{ display: 'flex', gap: 0.5 }}>
-            <IconButton size="small" onClick={onMoveUp} disabled={index === 0}>
+            <IconButton size="small" onClick={onMoveUp} disabled={index === 0} aria-label="Move step up">
               ▲
             </IconButton>
-            <IconButton size="small" onClick={onMoveDown} disabled={index === total - 1}>
+            <IconButton size="small" onClick={onMoveDown} disabled={index === total - 1} aria-label="Move step down">
               ▼
             </IconButton>
             {meta && (
