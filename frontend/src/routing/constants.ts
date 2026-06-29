@@ -51,4 +51,6 @@ export const buildRoute = {
   groupJoin: (inviteCode: string) => `/join/${inviteCode}`,
   appDownload: (inviteCode: string) => `/app/${inviteCode}`,
   memberProfile: (address: string) => `/members/${address}`,
+  deposit: () => `/ramp/deposit`,
+  withdraw: () => `/ramp/withdraw`,
 } as const;

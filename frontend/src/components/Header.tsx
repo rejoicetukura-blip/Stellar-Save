@@ -42,6 +42,8 @@ const NAV_LINKS = [
   { label: 'Groups', href: ROUTES.GROUPS },
   { label: 'Dashboard', href: ROUTES.DASHBOARD },
   { label: 'Profile', href: ROUTES.PROFILE },
+  { label: 'Buy Crypto', href: ROUTES.DEPOSIT },
+  { label: 'Sell Crypto', href: ROUTES.WITHDRAW },
 ];
 
 export default function Header() {

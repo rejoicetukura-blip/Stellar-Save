@@ -453,3 +453,58 @@ model ApiKeyUsage {
   @@index([keyId])
   @@index([createdAt])
 }
+
+// ========== KYC MODELS (Issue #1024) ==========
+
+model KycRecord {
+  id             String    @id @default(cuid())
+  userId         String    @unique
+  walletAddress  String
+  status         String    @default("pending") // pending | approved | rejected | expired
+  kycProviderId  String?
+  submittedAt    DateTime  @default(now())
+  reviewedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([walletAddress])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model KycStatusEvent {
+  id         String   @id @default(cuid())
+  userId     String
+  oldStatus  String
+  newStatus  String
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// ========== FIAT RAMP MODELS (Issue #1023) ==========
+
+model RampTransaction {
+  id             String   @id @default(cuid())
+  userId         String
+  type           String   // deposit | withdraw
+  anchorDomain   String
+  stellarAccount String
+  assetCode      String
+  assetIssuer    String?
+  amount         String?
+  anchorId       String?
+  status         String   // pending_user_transfer_start | pending_anchor | pending_stellar | pending_external | completed | refunded | expired | error
+  interactiveUrl String?
+  moreInfoUrl    String?
+  startedAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([userId])
+  @@index([anchorId])
+  @@index([status])
+  @@index([startedAt])
+  @@index([createdAt])
+}
