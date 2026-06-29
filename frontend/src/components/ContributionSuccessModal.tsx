@@ -298,6 +298,7 @@ export function ContributionSuccessModal({
           <ShareButton amount={amount} cycleId={cycleId} milestone={milestoneLabel} />
           <button
             onClick={onClose}
+            aria-label="Done"
             style={{
               padding: '8px 20px',
               borderRadius: '8px',
