@@ -182,6 +182,20 @@ export const routeConfig: RouteConfig[] = [
     description: "Connect and manage Ledger/Trezor hardware wallets",
   },
   {
+    path: ROUTES.DEPOSIT,
+    component: DepositPage,
+    protected: true,
+    title: "Buy Crypto - Stellar Save",
+    description: "Purchase XLM or stablecoins via bank transfer",
+  },
+  {
+    path: ROUTES.WITHDRAW,
+    component: WithdrawPage,
+    protected: true,
+    title: "Sell Crypto - Stellar Save",
+    description: "Withdraw crypto to your bank account",
+  },
+  {
     path: ROUTES.GROUP_JOIN,
     component: JoinViaInvite,
     protected: false,
